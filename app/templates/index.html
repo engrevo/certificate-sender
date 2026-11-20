@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>مُرسِل شهادات الحضور</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header class="top">
+  <h1>مُرسِل شهادات الحضور</h1>
+  <p>ارفع الشهادة، نحدد مكان الاسم تلقائيًا، وأرسلها لكل الحضور على واتساب.</p>
+</header>
+
+{% if dry_run %}
+<div class="banner info">وضع التجربة (DRY_RUN) مفعّل: ما راح تنرسل رسائل حقيقية، والشهادات تنحفظ في مجلد outbox.</div>
+{% elif wa_problems %}
+<div class="banner warn">إعدادات واتساب ناقصة ({{ wa_problems|join('، ') }}). تقدر تولّد الشهادات وتحمّلها، لكن الإرسال يحتاج تعبئة ملف ‎.env — شوف README.</div>
+{% endif %}
+
+<main>
+  <!-- Step 1 -->
+  <section class="card" id="step1">
+    <h2><span class="num">١</span> قالب الشهادة</h2>
+    <label class="drop" id="drop">
+      <input type="file" id="templateFile" accept=".png,.jpg,.jpeg,.webp,.pdf" hidden>
+      <strong>اسحب الشهادة هنا أو اضغط للاختيار</strong>
+      <small>PNG أو JPG أو PDF — للدقة الأعلى اكتب <code>{الاسم}</code> في مكان الاسم داخل التصميم</small>
+    </label>
+
+    <div id="editor" hidden>
+      <div class="detect" id="detectMsg"></div>
+      <div class="editor-grid">
+        <div>
+          <div class="stage" id="stage">
+            <img id="tplImg" alt="القالب" draggable="false">
+            <div class="box" id="box">
+              <span class="box-label">الاسم هنا</span>
+              <i class="h nw" data-h="nw"></i><i class="h ne" data-h="ne"></i>
+              <i class="h sw" data-h="sw"></i><i class="h se" data-h="se"></i>
+            </div>
+          </div>
+          <p class="hint">اسحب المربع لتحريكه، ومن الزوايا لتغيير حجمه. الاسم يتوسّط المربع ويصغر تلقائيًا لو كان طويل.</p>
+        </div>
+        <aside class="controls">
+          <label>اسم للمعاينة
+            <input type="text" id="sampleName" value="عبدالرحمن بن محمد القحطاني">
+          </label>
+          <label>الخط
+            <select id="font">
+              {% for key, (label, _) in fonts.items() %}
+              <option value="{{ key }}" {% if key == default_font %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label>اللون
+            <input type="color" id="color" value="#1a1a1a">
+          </label>
+          <label class="check" id="eraseWrap" hidden>
+            <input type="checkbox" id="erase" checked> امسح كلمة {الاسم} من القالب
+          </label>
+          <button class="secondary" id="resetBox">رجّع المكان المكتشف</button>
+          <div class="preview">
+            <div class="preview-title">المعاينة</div>
+            <img id="previewImg" alt="معاينة">
+          </div>
+        </aside>
+      </div>
+    </div>
+  </section>
+
+  <!-- Step 2 -->
+  <section class="card" id="step2">
+    <h2><span class="num">٢</span> قائمة الحضور</h2>
+    <div class="list-input">
+      <label>الصق الأسماء (كل سطر: الاسم، رقم الجوال)
+        <textarea id="listText" rows="6" placeholder="عبدالله محمد العتيبي، 0551234567&#10;سارة خالد الزهراني، 0569876543"></textarea>
+      </label>
+      <div class="or">أو</div>
+      <label class="file-btn">ارفع ملف Excel / CSV
+        <input type="file" id="listFile" accept=".xlsx,.xlsm,.csv,.tsv,.txt" hidden>
+      </label>
+    </div>
+    <button id="loadList">تحميل القائمة</button>
+    <div id="listSummary" class="summary"></div>
+    <div class="table-wrap"><table id="listTable" hidden>
+      <thead><tr><th>#</th><th>الاسم</th><th>الجوال</th><th>الحالة</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </section>
+
+  <!-- Step 3 -->
+  <section class="card" id="step3">
+    <h2><span class="num">٣</span> التوليد والإرسال</h2>
+    {% if wa_mode == 'document' %}
+    <label>نص مرافق للشهادة (اختياري، <code>{name}</code> يتبدّل بالاسم)
+      <input type="text" id="caption" value="مرحبًا {name}، شكرًا لحضورك! مرفق شهادة الحضور.">
+    </label>
+    {% endif %}
+    <div class="actions">
+      <button class="secondary" id="downloadZip" disabled>تحميل كل الشهادات (ZIP)</button>
+      <button id="sendBtn" disabled>إرسال على واتساب</button>
+      <button class="danger" id="cancelBtn" hidden>إيقاف</button>
+    </div>
+    <div id="progress" hidden>
+      <div class="bar"><div id="barFill"></div></div>
+      <div id="progressText" class="summary"></div>
+      <a id="reportLink" class="secondary-link" hidden>تحميل تقرير الإرسال (CSV)</a>
+    </div>
+  </section>
+</main>
+<div id="toast" class="toast" hidden></div>
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
