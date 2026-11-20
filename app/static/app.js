@@ -1,6 +1,6 @@
 (() => {
   const $ = (id) => document.getElementById(id);
-  const state = { sid: null, W: 0, H: 0, box: null, detected: null, hasErase: false, recipients: [], jobId: null };
+  const state = { mode: null, sid: null, W: 0, H: 0, box: null, detected: null, hasErase: false, recipients: [], jobId: null };
 
   const METHOD_MSG = {
     placeholder: "✓ لقينا كلمة الاسم داخل الشهادة، وراح نمسحها ونكتب مكانها اسم كل شخص.",
@@ -31,8 +31,10 @@
   });
   function refreshButtons() {
     const ready = state.sid && state.recipients.some((r) => r.name);
+    const sendable = state.sid && state.recipients.some((r) => !r.error) && !state.jobId;
     $("downloadZip").disabled = !ready;
-    $("sendBtn").disabled = !(state.sid && state.recipients.some((r) => !r.error));
+    $("linkBtn").disabled = !sendable;
+    if ($("sendBtn")) $("sendBtn").disabled = !sendable;
   }
 
   // ------------------------------------------------------------ step 1: template
@@ -194,9 +196,12 @@
     } catch (err) { toast(err.message, true); }
     $("listFile").value = "";
   }
-  function statusCell(r) {
+  function statusCell(r, i) {
+    if (r.url) {
+      return `<a class="wa${r.opened ? " opened" : ""}" href="#" data-i="${i}">${r.opened ? "✓ فتحتها — افتح مرة ثانية" : "أرسل ↗"}</a>`;
+    }
     if (r.sendStatus) {
-      const map = { pending: ["بالانتظار", "st-wait"], sending: ["جاري الإرسال…", "st-wait"], sent: ["✓ انرسلت", "st-ok"],
+      const map = { pending: ["بالانتظار", "st-wait"], sending: [state.mode === "links" ? "جاري التجهيز…" : "جاري الإرسال…", "st-wait"], sent: ["✓ انرسلت", "st-ok"],
                     failed: ["✗ " + (r.sendError || "فشل"), "st-bad"], skipped: ["تم تخطيه: " + (r.sendError || ""), "st-bad"] };
       const [t, c] = map[r.sendStatus] || [r.sendStatus, ""];
       return `<span class="${c}">${esc(t)}</span>`;
@@ -208,7 +213,7 @@
     const tb = $("listTable").querySelector("tbody");
     tb.innerHTML = state.recipients.map((r, i) => `<tr>
       <td>${i + 1}</td><td>${esc(r.name)}</td><td class="phone">${esc(r.phone ? "+" + r.phone : r.phone_raw)}</td>
-      <td>${statusCell(r)}</td><td>${state.jobId ? "" : `<button class="rm" data-i="${i}" title="حذف">✕</button>`}</td></tr>`).join("");
+      <td>${statusCell(r, i)}</td><td>${state.jobId || r.url ? "" : `<button class="rm" data-i="${i}" title="حذف">✕</button>`}</td></tr>`).join("");
     $("listTable").hidden = !state.recipients.length;
     const ok = state.recipients.filter((r) => !r.error).length, bad = state.recipients.length - ok;
     $("listSummary").textContent = state.recipients.length
@@ -221,6 +226,32 @@
   });
 
   // ------------------------------------------------------------ step 3: generate / send
+  const msgBox = $("waMessage");
+  try { const saved = localStorage.getItem("waMessage"); if (saved) msgBox.value = saved; } catch (_) {}
+  msgBox.addEventListener("input", () => { try { localStorage.setItem("waMessage", msgBox.value); } catch (_) {} });
+
+  function waUrl(r) {
+    const text = msgBox.value.replaceAll("{name}", r.name).replaceAll("{link}", r.url || "");
+    return `https://wa.me/${r.phone}?text=${encodeURIComponent(text)}`;
+  }
+  function nextPending() { return state.recipients.find((r) => r.url && !r.opened); }
+  function updateNextInfo() {
+    const ready = state.recipients.filter((r) => r.url), left = ready.filter((r) => !r.opened).length;
+    const nxt = nextPending();
+    $("nextBtn").disabled = !nxt;
+    $("nextBtn").textContent = nxt ? `افتح واتساب: ${nxt.name}` : "خلصت كل الشهادات الجاهزة ✓";
+    $("nextInfo").textContent = ready.length ? `فتحت ${ready.length - left} من ${ready.length}` : "";
+  }
+  function openWa(r) {
+    window.open(waUrl(r), "_blank", "noopener");
+    r.opened = true; renderList(); updateNextInfo();
+  }
+  $("nextBtn").addEventListener("click", () => { const r = nextPending(); if (r) openWa(r); });
+  $("listTable").addEventListener("click", (e) => {
+    const a = e.target.closest("a.wa"); if (!a) return;
+    e.preventDefault(); openWa(state.recipients[+a.dataset.i]);
+  });
+
   $("downloadZip").addEventListener("click", async () => {
     const btn = $("downloadZip"); btn.disabled = true; const label = btn.textContent; btn.textContent = "جاري التوليد…";
     try {
@@ -234,34 +265,49 @@
     btn.textContent = label; refreshButtons();
   });
 
-  $("sendBtn").addEventListener("click", async () => {
+  async function startJob(url, mode, extra = {}) {
+    state.recipients.forEach((r) => { delete r.url; delete r.opened; delete r.sendStatus; delete r.sendError; });
+    const data = await (await api(url, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...settings(), recipients: state.recipients, ...extra }),
+    })).json();
+    state.jobId = data.job_id; state.mode = mode;
+    refreshButtons();
+    $("cancelBtn").hidden = false; $("progress").hidden = false; $("reportLink").hidden = true;
+    $("sendPanel").hidden = mode !== "links"; if (mode === "links") updateNextInfo();
+    poll();
+  }
+
+  $("linkBtn").addEventListener("click", async () => {
+    try { await startJob("/api/links", "links"); } catch (err) { toast(err.message, true); }
+  });
+  const sendBtn = $("sendBtn");
+  if (sendBtn) sendBtn.addEventListener("click", async () => {
     const n = state.recipients.filter((r) => !r.error).length;
-    if (!confirm(`راح تنرسل ${n} شهادة على واتساب. متأكد؟`)) return;
-    try {
-      const cap = $("caption");
-      const data = await (await api("/api/send", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...settings(), recipients: state.recipients, caption: cap ? cap.value : "" }),
-      })).json();
-      state.jobId = data.job_id;
-      $("sendBtn").disabled = true; $("cancelBtn").hidden = false; $("progress").hidden = false; $("reportLink").hidden = true;
-      poll();
-    } catch (err) { toast(err.message, true); }
+    if (!confirm(`راح تنرسل ${n} شهادة تلقائيًا عن طريق WhatsApp API. متأكد؟`)) return;
+    const cap = $("caption");
+    try { await startJob("/api/send", "api", { caption: cap ? cap.value : "" }); } catch (err) { toast(err.message, true); }
   });
   $("cancelBtn").addEventListener("click", () => state.jobId && api(`/api/jobs/${state.jobId}/cancel`, { method: "POST" }));
 
   async function poll() {
     try {
       const job = await (await api(`/api/jobs/${state.jobId}`)).json();
-      job.items.forEach((it, i) => { if (state.recipients[i]) { state.recipients[i].sendStatus = it.status; state.recipients[i].sendError = it.error; } });
+      job.items.forEach((it, i) => {
+        const r = state.recipients[i]; if (!r) return;
+        r.sendStatus = it.status; r.sendError = it.error; if (it.url) r.url = it.url;
+      });
       renderList();
       const c = job.counts, done = c.sent + c.failed + c.skipped;
       $("barFill").style.width = (job.total ? (done / job.total) * 100 : 100) + "%";
-      $("progressText").textContent = `انرسلت ${c.sent} من ${job.total}` + (c.failed ? ` — فشل ${c.failed}` : "") + (c.skipped ? ` — تخطي ${c.skipped}` : "");
-      if (job.state === "running") return setTimeout(poll, 1500);
+      const verb = state.mode === "links" ? "تجهّزت" : "انرسلت";
+      $("progressText").textContent = `${verb} ${c.sent} من ${job.total}` + (c.failed ? ` — فشل ${c.failed}` : "") + (c.skipped ? ` — تخطي ${c.skipped}` : "");
+      if (state.mode === "links") updateNextInfo();
+      if (job.state === "running") return setTimeout(poll, 1200);
       $("cancelBtn").hidden = true;
       const link = $("reportLink"); link.href = `/api/jobs/${state.jobId}/report.csv`; link.hidden = false;
-      toast(job.state === "cancelled" ? "تم إيقاف الإرسال" : "انتهى الإرسال ✓");
+      toast(job.state === "cancelled" ? "تم الإيقاف"
+        : state.mode === "links" ? "الشهادات جاهزة ✓ اضغط «افتح واتساب» لكل شخص" : "انتهى الإرسال ✓");
       state.jobId = null; refreshButtons();
     } catch (err) { toast(err.message, true); setTimeout(poll, 3000); }
   }

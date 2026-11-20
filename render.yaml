@@ -23,6 +23,10 @@ services:
         value: attendance_certificate
       - key: WHATSAPP_TEMPLATE_LANG
         value: ar
+      - key: DRIVE_SCRIPT_URL
+        sync: false
+      - key: DRIVE_SCRIPT_SECRET
+        sync: false
       - key: WHATSAPP_TOKEN
         sync: false
       - key: WHATSAPP_PHONE_NUMBER_ID

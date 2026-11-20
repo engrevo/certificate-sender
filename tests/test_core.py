@@ -270,3 +270,63 @@ def test_parallel_send_uses_all_workers(tmp_path):
         time.sleep(0.05)
     assert sum(i["status"] == "sent" for i in job.items) == 8
     assert len(seen) == 4 and time.time() - t < 1.2  # ~4x faster than one-by-one (1.6s)
+
+
+# ------------------------------------------------------------------ send from my own number (links)
+def wait_job(client, job_id):
+    for _ in range(200):
+        s = client.get(f"/api/jobs/{job_id}").json
+        if s["state"] != "running":
+            return s
+        time.sleep(0.05)
+    raise AssertionError("job did not finish")
+
+
+def test_links_mode_end_to_end(client, samples):
+    t = upload(client, samples["placeholder_ar.png"])
+    people = client.post("/api/recipients", data={"text": "عبدالله، 0551234567\nرقم غلط، 05"}).json["recipients"]
+    job_id = client.post("/api/links", json={"session_id": t["session_id"], "box": t["detection"]["box"],
+                                             "recipients": people}).json["job_id"]
+    s = wait_job(client, job_id)
+    ok, bad = s["items"]
+    assert ok["status"] == "sent" and ok["url"].startswith("http://localhost/c/")
+    assert bad["status"] == "skipped" and "url" not in bad
+    token_path = ok["url"].replace("http://localhost", "")
+    pdf = client.get(token_path)
+    assert pdf.status_code == 200 and pdf.data.startswith(b"%PDF") and pdf.mimetype == "application/pdf"
+
+
+def test_certificate_links_are_public_but_tokens_are_checked(tmp_path):
+    app = create_app({"TESTING": True, "DATA_DIR": str(tmp_path), "APP_PASSWORD": "secret"})
+    c = app.test_client()
+    from app.storage import LocalStore
+    url = LocalStore(tmp_path / "certs", "http://x").save(b"%PDF-1.4 test", "شهادة_سارة.pdf")
+    r = c.get(url.replace("http://x", ""))  # no login needed for attendees
+    assert r.status_code == 200 and "attachment" not in r.headers.get("Content-Disposition", "")
+    assert c.get("/c/..%2F..%2Fetc%2Fpasswd").status_code != 200  # never reaches a file
+    assert c.get("/c/AAAAAAAAAAAAAAAAAAAAAAAA").status_code == 404
+
+
+def test_drive_store_posts_base64_and_returns_url():
+    import base64, json as _json
+    from app.storage import DriveStore, StorageError
+
+    class S:
+        def __init__(self, body): self.body, self.sent = body, None
+        def post(self, url, data, timeout, headers):
+            self.sent = _json.loads(data)
+            return FakeResp(200, self.body)
+
+    s = S({"url": "https://drive.google.com/file/d/abc/view"})
+    assert DriveStore("https://script/exec", "pw", s).save(b"%PDF", "a.pdf").endswith("/view")
+    assert s.sent["secret"] == "pw" and base64.b64decode(s.sent["data"]) == b"%PDF"
+    with pytest.raises(StorageError, match="unauthorized"):
+        DriveStore("https://script/exec", "bad", S({"error": "unauthorized"})).save(b"%PDF", "a.pdf")
+
+
+def test_api_button_only_when_whatsapp_api_configured(tmp_path):
+    plain = create_app({"TESTING": True, "DATA_DIR": str(tmp_path), "WHATSAPP_CONFIG": WhatsAppConfig()})
+    html = plain.test_client().get("/").get_data(as_text=True)
+    assert 'id="linkBtn"' in html and 'id="sendBtn"' not in html
+    api = create_app({"TESTING": True, "DATA_DIR": str(tmp_path), "WHATSAPP_CONFIG": cfg()})
+    assert 'id="sendBtn"' in api.test_client().get("/").get_data(as_text=True)

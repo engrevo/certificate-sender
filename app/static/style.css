@@ -79,3 +79,9 @@ body.login { display: grid; place-items: center; min-height: 100vh; }
 .login-card { width: min(380px, 92vw); display: grid; gap: 14px; }
 .login-card h1 { font-size: 1.3rem; margin: 0; }
 .err { color: var(--bad); margin: 0; }
+
+.banner.inline { margin: 0 0 14px; max-width: none; }
+.send-panel { margin-top: 16px; padding: 14px; border-radius: 12px; background: #f0faf4; display: grid; gap: 8px; justify-items: start; }
+.wa-btn, a.wa { background: #1f9d55; color: #fff; }
+a.wa { display: inline-block; padding: 4px 12px; border-radius: 8px; text-decoration: none; font-weight: 700; }
+a.wa.opened { background: #e7f6ec; color: var(--ok); }

@@ -15,6 +15,7 @@ from .detector import Box
 from concurrent.futures import ThreadPoolExecutor
 
 from .renderer import erase_regions, render_certificate, to_pdf_bytes
+from .storage import StorageError
 from .whatsapp import WhatsAppClient, WhatsAppError
 
 
@@ -39,9 +40,10 @@ class Job:
     def report_csv(self) -> bytes:
         buf = io.StringIO()
         w = csv.writer(buf)
-        w.writerow(["name", "phone", "status", "message_id", "error"])
+        w.writerow(["name", "phone", "status", "link_or_message_id", "error"])
         for i in self.items:
-            w.writerow([i["name"], i.get("phone") or i.get("phone_raw", ""), i["status"], i.get("message_id", ""), i.get("error") or ""])
+            w.writerow([i["name"], i.get("phone") or i.get("phone_raw", ""), i["status"],
+                        i.get("url") or i.get("message_id", ""), i.get("error") or ""])
         return ("﻿" + buf.getvalue()).encode("utf-8")  # BOM so Excel shows Arabic
 
 
@@ -81,10 +83,11 @@ class JobManager:
             try:
                 pdf = to_pdf_bytes(render_certificate(base, item["name"], box, font, color))
                 msg_caption = caption.replace("{name}", item["name"]) if caption else ""
-                item["message_id"] = client.send_certificate(item["phone"], item["name"], pdf,
-                                                             safe_filename(item["name"]), msg_caption)
+                result = client.send_certificate(item["phone"], item["name"], pdf,
+                                                 safe_filename(item["name"]), msg_caption)
+                item["url" if getattr(client, "returns_url", False) else "message_id"] = result
                 item["status"] = "sent"
-            except WhatsAppError as exc:
+            except (WhatsAppError, StorageError) as exc:
                 item["status"], item["error"] = "failed", str(exc)
             except Exception as exc:  # keep going with the rest of the list
                 item["status"], item["error"] = "failed", f"خطأ غير متوقع: {exc}"

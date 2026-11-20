@@ -19,6 +19,7 @@ from .jobs import JobManager, safe_filename
 from .recipients import parse_file, parse_text
 from .renderer import (DEFAULT_FONT, FONTS, FONTS_DIR, erase_fill_colors, erase_regions, load_template,
                        render_certificate, to_pdf_bytes, to_png_bytes, view_jpeg)
+from .storage import LinkClient, LocalStore, make_store
 from .whatsapp import WhatsAppClient, WhatsAppConfig
 
 TEMPLATE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".pdf"}
@@ -52,6 +53,15 @@ def create_app(config: dict | None = None) -> Flask:
 
     def wa_config() -> WhatsAppConfig:
         return app.config.get("WHATSAPP_CONFIG") or WhatsAppConfig.from_env()
+
+    def public_base_url() -> str:
+        return (os.environ.get("PUBLIC_URL") or os.environ.get("RENDER_EXTERNAL_URL") or request.url_root).rstrip("/")
+
+    def store():
+        return app.config.get("CERT_STORE") or make_store(app.config["DATA_DIR"], public_base_url())
+
+    def api_ready(cfg: WhatsAppConfig) -> bool:
+        return bool(cfg.token and cfg.phone_number_id)
 
     # ------------------------------------------------------------- helpers
     def session_dir(sid: str) -> Path:
@@ -106,7 +116,7 @@ def create_app(config: dict | None = None) -> Flask:
     # ------------------------------------------------------------- auth
     @app.before_request
     def require_login():
-        if not app.config["APP_PASSWORD"] or request.endpoint in ("login", "static"):
+        if not app.config["APP_PASSWORD"] or request.endpoint in ("login", "static", "certificate_link"):
             return None
         if session.get("ok"):
             return None
@@ -138,8 +148,11 @@ def create_app(config: dict | None = None) -> Flask:
     def index():
         cfg = wa_config()
         font_urls = {k: url_for("font_file", key=k) for k in FONTS}
+        st = store()
         return render_template("index.html", fonts=FONTS, default_font=DEFAULT_FONT, font_urls=font_urls,
-                               wa_problems=cfg.problems(), dry_run=cfg.dry_run, wa_mode=cfg.mode)
+                               wa_problems=cfg.problems(), dry_run=cfg.dry_run, wa_mode=cfg.mode,
+                               api_ready=api_ready(cfg), storage_durable=st.durable,
+                               ephemeral_host=bool(os.environ.get("RENDER")))
 
     # ------------------------------------------------------------- API
     @app.post("/api/template")
@@ -237,6 +250,25 @@ def create_app(config: dict | None = None) -> Flask:
         job = jobs.start(template, settings, people, client, app.config["SEND_DELAY"], caption,
                          app.config["SEND_WORKERS"])
         return jsonify(job_id=job.id)
+
+    @app.post("/api/links")
+    def make_links():
+        """Generate every certificate, store it, and return a shareable link per person."""
+        p = request.get_json(force=True, silent=True) or {}
+        template, meta = load_session(p.get("session_id", ""))
+        settings = parse_settings(p, meta)
+        people = clean_recipients(p.get("recipients"))
+        job = jobs.start(template, settings, people, LinkClient(store()), 0, "", app.config["SEND_WORKERS"])
+        return jsonify(job_id=job.id)
+
+    @app.get("/c/<token>")
+    def certificate_link(token):
+        st = store()
+        found = st.lookup(token) if isinstance(st, LocalStore) else None
+        if not found:
+            return render_template("expired.html"), 404
+        path, filename = found
+        return send_file(path, mimetype="application/pdf", download_name=filename, max_age=86400)
 
     @app.get("/api/jobs/<job_id>")
     def job_status(job_id):

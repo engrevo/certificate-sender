@@ -12,11 +12,7 @@
   <p>ارفع الشهادة، نحدد مكان الاسم تلقائيًا، وأرسلها لكل الحضور على واتساب.</p>
 </header>
 
-{% if dry_run %}
-<div class="banner info">وضع التجربة (DRY_RUN) مفعّل: ما راح تنرسل رسائل حقيقية، والشهادات تنحفظ في مجلد outbox.</div>
-{% elif wa_problems %}
-<div class="banner warn">إعدادات واتساب ناقصة ({{ wa_problems|join('، ') }}). تقدر تولّد الشهادات وتحمّلها، لكن الإرسال يحتاج تعبئة ملف ‎.env — شوف README.</div>
-{% endif %}
+
 
 <main>
   <!-- Step 1 -->
@@ -90,21 +86,35 @@
 
   <!-- Step 3 -->
   <section class="card" id="step3">
-    <h2><span class="num">٣</span> التوليد والإرسال</h2>
-    {% if wa_mode == 'document' %}
-    <label>نص مرافق للشهادة (اختياري، <code>{name}</code> يتبدّل بالاسم)
+    <h2><span class="num">٣</span> الإرسال</h2>
+    {% if not storage_durable and ephemeral_host %}
+    <div class="banner warn inline">روابط الشهادات حاليًا محفوظة على السيرفر المجاني، وتنحذف إذا نام. عشان تبقى الروابط دائمة اربط Google Drive (الخطوات في README).</div>
+    {% endif %}
+    <label><span>رسالة الواتساب (<code>{name}</code> = الاسم، <code>{link}</code> = رابط الشهادة)</span>
+      <textarea id="waMessage" rows="3">السلام عليكم {name} 👋
+شكرًا لحضورك! هذي شهادة الحضور حقتك:
+{link}</textarea>
+    </label>
+    {% if api_ready and wa_mode == 'document' %}
+    <label><span>نص مرافق للإرسال التلقائي (<code>{name}</code> يتبدّل بالاسم)</span>
       <input type="text" id="caption" value="مرحبًا {name}، شكرًا لحضورك! مرفق شهادة الحضور.">
     </label>
     {% endif %}
     <div class="actions">
+      <button id="linkBtn" disabled>إرسال من رقمي على واتساب</button>
       <button class="secondary" id="downloadZip" disabled>تحميل كل الشهادات (ZIP)</button>
-      <button id="sendBtn" disabled>إرسال على واتساب</button>
+      {% if api_ready %}<button class="secondary" id="sendBtn" disabled>إرسال تلقائي (WhatsApp API{{ ' — تجربة' if dry_run }})</button>{% endif %}
       <button class="danger" id="cancelBtn" hidden>إيقاف</button>
+    </div>
+    <div id="sendPanel" class="send-panel" hidden>
+      <button id="nextBtn" class="wa-btn">افتح واتساب للشخص التالي</button>
+      <span id="nextInfo" class="summary"></span>
+      <p class="hint">كل ضغطة تفتح محادثة الشخص في واتساب والرسالة مكتوبة جاهزة فيها. اضغط إرسال هناك، وارجع هنا للشخص اللي بعده. تقدر بعد تضغط «أرسل» جنب أي اسم في الجدول.</p>
     </div>
     <div id="progress" hidden>
       <div class="bar"><div id="barFill"></div></div>
       <div id="progressText" class="summary"></div>
-      <a id="reportLink" class="secondary-link" hidden>تحميل تقرير الإرسال (CSV)</a>
+      <a id="reportLink" class="secondary-link" hidden>تحميل التقرير (CSV)</a>
     </div>
   </section>
 </main>
