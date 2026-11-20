@@ -11,9 +11,8 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "samples"))
 
 from app import create_app  # noqa: E402
-from app.detector import Box, detect_name_box, is_placeholder_text  # noqa: E402
 from app.recipients import normalize_phone, parse_file, parse_text  # noqa: E402
-from app.renderer import load_template, render_certificate, to_pdf_bytes  # noqa: E402
+from app.renderer import Box, default_box, load_template, render_certificate, to_pdf_bytes  # noqa: E402
 from app.whatsapp import WhatsAppClient, WhatsAppConfig, WhatsAppError  # noqa: E402
 import make_samples  # noqa: E402
 
@@ -23,47 +22,9 @@ def samples():
     return {name: fn() for name, fn in make_samples.SAMPLES.items()}
 
 
-def center(b):
-    return b.x + b.w / 2, b.y + b.h / 2
-
-
-# ------------------------------------------------------------------ detection
-def test_arabic_placeholder_detected_and_erased(samples):
-    d = detect_name_box(samples["placeholder_ar.png"])
-    assert d.method == "placeholder"
-    cx, cy = center(d.box)
-    assert abs(cx - 1000) < 60 and 560 < cy < 720
-    assert d.erase, "placeholder must be erased"
-    assert d.color.lower() == "#7a1f1f"
-
-
-def test_english_placeholder_detected(samples):
-    d = detect_name_box(samples["placeholder_en.png"])
-    assert d.method == "placeholder"
-
-
-@pytest.mark.parametrize("name", ["line.png", "dotted.png"])
-def test_line_detected(samples, name):
-    d = detect_name_box(samples[name])
-    assert d.method == "line"
-    assert d.box.y + d.box.h <= 760 and d.box.y + d.box.h > 700  # just above the line
-    assert d.box.w > 900
-
-
-def test_blank_uses_whitespace_not_signature_line(samples):
-    d = detect_name_box(samples["blank.png"])
-    assert d.method == "whitespace"
-    cx, cy = center(d.box)
-    assert 500 < cy < 850 and abs(cx - 1000) < 50
-
-
-@pytest.mark.parametrize("text,alone,expected", [
-    ("{الاسم}", False, True), ("{{name}}", False, True), ("<<Name>>", False, True),
-    ("[اسم المشارك]", False, True), ("NAME", False, True), ("الاسم", True, True),
-    ("الاسم", False, False), ("name", False, False), ("نادي", True, False),
-])
-def test_placeholder_rules(text, alone, expected):
-    assert is_placeholder_text(text, alone) is expected
+def test_default_box_is_centred(samples):
+    b = default_box(2000, 1414)
+    assert abs((b.x + b.w / 2) - 1000) <= 1 and 0.4 * 1414 < b.y < 0.5 * 1414
 
 
 # ------------------------------------------------------------------ rendering
@@ -189,12 +150,11 @@ def upload(client, img):
 
 
 def test_end_to_end_dry_run(client, samples, tmp_path):
-    t = upload(client, samples["placeholder_ar.png"])
-    assert t["detection"]["method"] == "placeholder"
+    t = upload(client, samples["line.png"])
     r = client.post("/api/recipients", data={"text": "عبدالله، 0551234567\nسارة، 05\nخالد، 0501112233"})
     people = r.json["recipients"]
     assert r.json["valid"] == 2
-    common = {"session_id": t["session_id"], "box": t["detection"]["box"], "font": "amiri-bold", "color": "#112233"}
+    common = {"session_id": t["session_id"], "box": t["box"], "font": "amiri-bold", "color": "#112233"}
 
     assert client.post("/api/preview", json={**common, "name": "تجربة"}).mimetype == "image/png"
 
@@ -229,10 +189,9 @@ def test_login_required(tmp_path):
     assert c.get("/").status_code == 200
 
 
-def test_upload_returns_erase_fill_and_light_view(client, samples):
-    t = upload(client, samples["placeholder_ar.png"])
-    fills = t["detection"]["erase_fill"]
-    assert len(fills) == 1 and fills[0].lower() == "#fbf8f1"  # the template's background
+def test_upload_is_light_and_returns_a_default_box(client, samples):
+    t = upload(client, samples["line.png"])
+    assert set(t) == {"session_id", "width", "height", "box"}
     img = client.get(f"/api/template/{t['session_id']}/image")
     assert img.mimetype == "image/jpeg" and len(img.data) < 400_000
 
@@ -263,7 +222,7 @@ def test_parallel_send_uses_all_workers(tmp_path):
 
     tpl = Image.new("RGB", (800, 560), "white")
     people = [{"name": f"n{i}", "phone": "966551234567"} for i in range(8)]
-    settings = {"box": {"x": 100, "y": 200, "w": 600, "h": 80}, "erase": [], "font": "amiri", "color": "#000000"}
+    settings = {"box": {"x": 100, "y": 200, "w": 600, "h": 80}, "font": "amiri", "color": "#000000"}
     t = time.time()
     job = JobManager().start(tpl, settings, people, SlowClient(), delay=0, workers=4)
     while job.state == "running":
@@ -283,9 +242,9 @@ def wait_job(client, job_id):
 
 
 def test_links_mode_end_to_end(client, samples):
-    t = upload(client, samples["placeholder_ar.png"])
+    t = upload(client, samples["line.png"])
     people = client.post("/api/recipients", data={"text": "عبدالله، 0551234567\nرقم غلط، 05"}).json["recipients"]
-    job_id = client.post("/api/links", json={"session_id": t["session_id"], "box": t["detection"]["box"],
+    job_id = client.post("/api/links", json={"session_id": t["session_id"], "box": t["box"],
                                              "recipients": people}).json["job_id"]
     s = wait_job(client, job_id)
     ok, bad = s["items"]

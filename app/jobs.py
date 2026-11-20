@@ -11,10 +11,9 @@ from dataclasses import dataclass, field
 
 from PIL import Image
 
-from .detector import Box
 from concurrent.futures import ThreadPoolExecutor
 
-from .renderer import erase_regions, render_certificate, to_pdf_bytes
+from .renderer import Box, render_certificate, to_pdf_bytes
 from .storage import StorageError
 from .whatsapp import WhatsAppClient, WhatsAppError
 
@@ -72,8 +71,7 @@ class JobManager:
 
     def _run(self, job: Job, template, settings, client, delay, caption, workers):
         box = Box(**settings["box"])
-        # Erase the placeholder once for the whole batch instead of per certificate.
-        base = erase_regions(template, [Box(**b) for b in settings.get("erase", [])])
+        base = template
         font, color = settings.get("font"), settings.get("color", "#1a1a1a")
 
         def process(item):

@@ -34,7 +34,7 @@ code { background: #f0f2f5; padding: 1px 6px; border-radius: 5px; direction: ltr
 .stage canvas { display: block; width: 100%; height: auto; }
 .stage.nobox .box { border-color: transparent; background: transparent; }
 .stage.nobox .box .h, .stage.nobox .box .box-label { display: none; }
-.stage.busy::after { content: "جاري تحليل الشهادة…"; position: absolute; inset: 0; display: grid; place-items: center;
+.stage.busy::after { content: "جاري رفع الشهادة…"; position: absolute; inset: 0; display: grid; place-items: center;
   background: rgba(255,255,255,.7); font-weight: 700; }
 .box { position: absolute; border: 2px dashed #e0457b; background: rgba(224,69,123,.10); cursor: move; }
 .box-label { position: absolute; top: -26px; right: -2px; background: #e0457b; color: #fff; font-size: .78rem;

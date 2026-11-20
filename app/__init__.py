@@ -1,4 +1,4 @@
-"""Flask app: upload a certificate, auto-detect the name spot, send via WhatsApp."""
+"""Flask app: upload a certificate, place the name box, send via WhatsApp."""
 from __future__ import annotations
 
 import hmac
@@ -14,11 +14,10 @@ from flask import (Flask, abort, jsonify, redirect, render_template, request, se
                    session, url_for)
 from PIL import Image
 
-from .detector import Box, detect_name_box
 from .jobs import JobManager, safe_filename
 from .recipients import parse_file, parse_text
-from .renderer import (DEFAULT_FONT, FONTS, FONTS_DIR, erase_fill_colors, erase_regions, load_template,
-                       render_certificate, to_pdf_bytes, to_png_bytes, view_jpeg)
+from .renderer import (DEFAULT_FONT, FONTS, FONTS_DIR, Box, default_box, load_template, render_certificate,
+                       to_pdf_bytes, to_png_bytes, view_jpeg)
 from .storage import LinkClient, LocalStore, make_store
 from .whatsapp import WhatsAppClient, WhatsAppConfig
 
@@ -83,16 +82,12 @@ def create_app(config: dict | None = None) -> Flask:
             box = Box(int(b["x"]), int(b["y"]), int(b["w"]), int(b["h"])).clip(W, H)
         except (KeyError, TypeError, ValueError):
             abort(400, "إحداثيات مكان الاسم غير صالحة")
-        erase = []
-        if payload.get("erase_placeholder", True):
-            erase = [Box(**e).clip(W, H) for e in meta["detection"].get("erase", [])]
         font = payload.get("font") if payload.get("font") in FONTS else DEFAULT_FONT
         color = payload.get("color") if _COLOR.match(str(payload.get("color", ""))) else "#1a1a1a"
-        return {"box": box.__dict__, "erase": [e.__dict__ for e in erase], "font": font, "color": color}
+        return {"box": box.__dict__, "font": font, "color": color}
 
-    def render(template, settings, name, erased=False):
-        erase = [] if erased else [Box(**e) for e in settings["erase"]]
-        return render_certificate(template, name, Box(**settings["box"]), settings["font"], settings["color"], erase)
+    def render(template, settings, name):
+        return render_certificate(template, name, Box(**settings["box"]), settings["font"], settings["color"])
 
     def clean_recipients(raw) -> list[dict]:
         from .recipients import make_recipient
@@ -166,15 +161,12 @@ def create_app(config: dict | None = None) -> Flask:
             img = load_template(f.read(), f.filename)
         except Exception:
             abort(400, "تعذّر قراءة الملف، تأكد أنه صورة أو PDF سليم")
-        det = detect_name_box(img)
         sid = uuid.uuid4().hex
         d = Path(app.config["DATA_DIR"]) / "sessions" / sid
         d.mkdir(parents=True)
         img.save(d / "template.png", compress_level=1)
         (d / "view.jpg").write_bytes(view_jpeg(img))
-        detection = det.to_dict()
-        detection["erase_fill"] = erase_fill_colors(img, det.erase)
-        meta = {"width": img.width, "height": img.height, "detection": detection}
+        meta = {"width": img.width, "height": img.height, "box": default_box(img.width, img.height).__dict__}
         (d / "meta.json").write_text(json.dumps(meta, ensure_ascii=False))
         return jsonify(session_id=sid, **meta)
 
@@ -222,7 +214,6 @@ def create_app(config: dict | None = None) -> Flask:
         template, meta = load_session(p.get("session_id", ""))
         settings = parse_settings(p, meta)
         people = [r for r in clean_recipients(p.get("recipients")) if r["name"]]
-        base = erase_regions(template, [Box(**e) for e in settings["erase"]])
         buf = io.BytesIO()
         used = set()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
@@ -232,7 +223,7 @@ def create_app(config: dict | None = None) -> Flask:
                 while fn in used:
                     fn = safe_filename(f"{r['name']}_{n}"); n += 1
                 used.add(fn)
-                z.writestr(fn, to_pdf_bytes(render(base, settings, r["name"], erased=True)))
+                z.writestr(fn, to_pdf_bytes(render(template, settings, r["name"])))
         buf.seek(0)
         return send_file(buf, mimetype="application/zip", as_attachment=True, download_name="certificates.zip")
 

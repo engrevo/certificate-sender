@@ -21,11 +21,11 @@
     <label class="drop" id="drop">
       <input type="file" id="templateFile" accept=".png,.jpg,.jpeg,.webp,.pdf" hidden>
       <strong>اسحب الشهادة هنا أو اضغط للاختيار</strong>
-      <small>PNG أو JPG أو PDF — للدقة الأعلى اكتب <code>{الاسم}</code> في مكان الاسم داخل التصميم</small>
+      <small>PNG أو JPG أو PDF — خلّ مكان الاسم فاضي في التصميم</small>
     </label>
 
     <div id="editor" hidden>
-      <div class="detect" id="detectMsg"></div>
+      <div class="detect">حدد مكان الاسم: اسحب المربع الوردي لمكانه في الشهادة، وكبّره أو صغّره من الزوايا.</div>
       <div class="editor-grid">
         <div>
           <div class="stage" id="stage">
@@ -36,7 +36,7 @@
               <i class="h sw" data-h="sw"></i><i class="h se" data-h="se"></i>
             </div>
           </div>
-          <p class="hint">اسحب المربع لتحريكه، ومن الزوايا لتغيير حجمه. المعاينة تتحدث مباشرة، والاسم يتوسّط المربع ويصغر تلقائيًا لو كان طويل.</p>
+          <p class="hint">المعاينة تتحدث مباشرة. الاسم يتوسّط المربع، ويصغر لحاله لو كان طويل. ارتفاع المربع يحدد حجم الخط.</p>
         </div>
         <aside class="controls">
           <label>اسم للمعاينة
@@ -52,13 +52,10 @@
           <label>اللون
             <input type="color" id="color" value="#1a1a1a">
           </label>
-          <label class="check" id="eraseWrap" hidden>
-            <input type="checkbox" id="erase" checked> امسح كلمة {الاسم} من القالب
-          </label>
           <label class="check">
             <input type="checkbox" id="showBox" checked> أظهر مربع التحديد
           </label>
-          <button class="secondary" id="resetBox">رجّع المكان المكتشف</button>
+          <button class="secondary" id="centerBox">وسّط المربع أفقيًا</button>
         </aside>
       </div>
     </div>

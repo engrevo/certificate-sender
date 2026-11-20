@@ -1,13 +1,18 @@
 (() => {
   const $ = (id) => document.getElementById(id);
-  const state = { mode: null, sid: null, W: 0, H: 0, box: null, detected: null, hasErase: false, recipients: [], jobId: null };
+  const state = { mode: null, sid: null, W: 0, H: 0, box: null, recipients: [], jobId: null };
 
-  const METHOD_MSG = {
-    placeholder: "✓ لقينا كلمة الاسم داخل الشهادة، وراح نمسحها ونكتب مكانها اسم كل شخص.",
-    line: "✓ لقينا الخط المخصص للاسم، والاسم بينكتب فوقه.",
-    whitespace: "حددنا أوسع مساحة فاضية في وسط الشهادة. تأكد من المكان وعدّله لو احتاج.",
-    center: "ما قدرنا نحدد المكان بثقة، فحطينا المربع في الوسط. اسحبه للمكان الصحيح.",
-  };
+  // The last box position is remembered (as fractions of the page) because a
+  // club's certificates usually keep the name in the same place.
+  function savedBox() {
+    try { return JSON.parse(localStorage.getItem("nameBox") || "null"); } catch (_) { return null; }
+  }
+  function rememberBox() {
+    try {
+      const b = state.box;
+      localStorage.setItem("nameBox", JSON.stringify({ x: b.x / state.W, y: b.y / state.H, w: b.w / state.W, h: b.h / state.H }));
+    } catch (_) {}
+  }
 
   // ------------------------------------------------------------ utils
   let toastTimer;
@@ -27,7 +32,6 @@
   }
   const settings = () => ({
     session_id: state.sid, box: state.box, font: $("font").value, color: $("color").value,
-    erase_placeholder: $("erase").checked,
   });
   function refreshButtons() {
     const ready = state.sid && state.recipients.some((r) => r.name);
@@ -69,16 +73,12 @@
     stage.classList.add("busy");
     try {
       const fd = new FormData(); fd.append("file", await shrinkImage(file));
-      label.textContent = "جاري تحليل الشهادة…";
+
       const data = await (await api("/api/template", { method: "POST", body: fd })).json();
       state.sid = data.session_id; state.W = data.width; state.H = data.height;
-      state.detected = data.detection; state.box = { ...data.detection.box };
-      state.hasErase = (data.detection.erase || []).length > 0;
-      $("color").value = data.detection.color || "#1a1a1a";
-      $("eraseWrap").hidden = !state.hasErase;
-      const msg = $("detectMsg");
-      msg.textContent = METHOD_MSG[data.detection.method] || "";
-      msg.className = "detect" + (data.detection.confidence < 0.6 ? " low" : "");
+      const r = savedBox();
+      state.box = r ? { x: Math.round(r.x * state.W), y: Math.round(r.y * state.H), w: Math.round(r.w * state.W), h: Math.round(r.h * state.H) }
+                    : { ...data.box };
       await Promise.all([loadTemplateImage(`/api/template/${state.sid}/image`), loadFont($("font").value)]);
       $("editor").hidden = false;
       label.textContent = "تغيير الشهادة — اسحب ملف جديد أو اضغط";
@@ -118,10 +118,12 @@
     state.box = { x: Math.round(x), y: Math.round(y), w: Math.round(Math.min(w, state.W)), h: Math.round(Math.min(h, state.H)) };
     placeBox(); requestDraw();
   });
-  const endDrag = () => { drag = null; };
+  const endDrag = () => { if (drag) rememberBox(); drag = null; };
   boxEl.addEventListener("pointerup", endDrag);
   boxEl.addEventListener("pointercancel", endDrag);
-  $("resetBox").addEventListener("click", () => { state.box = { ...state.detected.box }; placeBox(); draw(); });
+  $("centerBox").addEventListener("click", () => {
+    state.box.x = Math.round((state.W - state.box.w) / 2); placeBox(); draw(); rememberBox();
+  });
   $("showBox").addEventListener("change", (e) => stage.classList.toggle("nobox", !e.target.checked));
 
   // ------------------------------------------------------------ instant preview (drawn in the browser)
@@ -154,12 +156,6 @@
     if (!tplImage || !state.box) return;
     const k = canvas.width / state.W;
     ctx.drawImage(tplImage, 0, 0, canvas.width, canvas.height);
-    if (state.hasErase && $("erase").checked) {
-      (state.detected.erase || []).forEach((b, i) => {
-        ctx.fillStyle = (state.detected.erase_fill || [])[i] || "#ffffff";
-        ctx.fillRect(b.x * k, b.y * k, b.w * k + 1, b.h * k + 1);
-      });
-    }
     const name = $("sampleName").value.trim().replace(/\s+/g, " ");
     if (!name) return;
     const key = $("font").value, family = `"cert-${key}"`;
@@ -180,7 +176,7 @@
     ctx.fillStyle = $("color").value;
     ctx.fillText(name, bx + (bw - tw) / 2 + m.actualBoundingBoxLeft, by + (bh - th) / 2 + m.actualBoundingBoxAscent);
   }
-  ["sampleName", "color", "erase"].forEach((id) => $(id).addEventListener("input", requestDraw));
+  ["sampleName", "color"].forEach((id) => $(id).addEventListener("input", requestDraw));
   $("font").addEventListener("change", () => loadFont($("font").value).then(draw));
   document.fonts && document.fonts.ready.then(() => requestDraw());
 

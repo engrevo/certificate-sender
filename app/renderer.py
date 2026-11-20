@@ -5,10 +5,9 @@ import io
 from functools import lru_cache
 from pathlib import Path
 
-import numpy as np
-from PIL import Image, ImageDraw, ImageFont, features
+from dataclasses import dataclass
 
-from .detector import Box
+from PIL import Image, ImageDraw, ImageFont, features
 
 FONTS_DIR = Path(__file__).parent / "fonts"
 FONTS = {
@@ -23,6 +22,28 @@ MAX_TEMPLATE_SIDE = 2480  # A4 long side at ~210 dpi: sharp in print, much faste
 VIEW_MAX_SIDE = 1600     # lightweight copy shown in the browser
 
 _HAS_RAQM = features.check("raqm")
+
+
+@dataclass
+class Box:
+    """Where the name goes, in template pixels."""
+    x: int
+    y: int
+    w: int
+    h: int
+
+    def clip(self, width: int, height: int) -> "Box":
+        x = max(0, min(self.x, width - 1))
+        y = max(0, min(self.y, height - 1))
+        w = max(1, min(self.w, width - x))
+        h = max(1, min(self.h, height - y))
+        return Box(x, y, w, h)
+
+
+def default_box(width: int, height: int) -> Box:
+    """Starting position the organizer then drags into place: centred, a bit above the middle."""
+    w, h = int(width * 0.6), int(height * 0.085)
+    return Box((width - w) // 2, int(height * 0.45), w, h)
 
 
 def load_template(data: bytes, filename: str) -> Image.Image:
@@ -65,45 +86,12 @@ def _shape(text: str) -> str:
     return get_display(arabic_reshaper.reshape(text))
 
 
-def _background_color(arr: np.ndarray, box: Box) -> tuple[int, int, int]:
-    """Median colour of a thin ring just outside the box."""
-    H, W = arr.shape[:2]
-    m = 4
-    x0, y0 = max(0, box.x - m), max(0, box.y - m)
-    x1, y1 = min(W, box.x + box.w + m), min(H, box.y + box.h + m)
-    ring = np.concatenate([
-        arr[y0:box.y, x0:x1].reshape(-1, 3),
-        arr[box.y + box.h:y1, x0:x1].reshape(-1, 3),
-        arr[y0:y1, x0:box.x].reshape(-1, 3),
-        arr[y0:y1, box.x + box.w:x1].reshape(-1, 3),
-    ])
-    if ring.size == 0:
-        return (255, 255, 255)
-    return tuple(int(v) for v in np.median(ring, axis=0))
-
-
-def erase_fill_colors(img: Image.Image, boxes: list[Box]) -> list[str]:
-    arr = np.array(img)
-    return ["#%02x%02x%02x" % _background_color(arr, b) for b in boxes]
-
-
 def view_jpeg(img: Image.Image) -> bytes:
     small = img.copy()
     small.thumbnail((VIEW_MAX_SIDE, VIEW_MAX_SIDE), Image.LANCZOS)
     buf = io.BytesIO()
     small.save(buf, format="JPEG", quality=85)
     return buf.getvalue()
-
-
-def erase_regions(img: Image.Image, boxes: list[Box]) -> Image.Image:
-    out = img.copy()  # never draw on the shared template
-    if not boxes:
-        return out
-    arr = np.array(out)
-    draw = ImageDraw.Draw(out)
-    for b in boxes:
-        draw.rectangle([b.x, b.y, b.x + b.w, b.y + b.h], fill=_background_color(arr, b))
-    return out
 
 
 def fit_font(text: str, box: Box, font_key: str, max_size: int | None = None) -> ImageFont.FreeTypeFont:
@@ -125,11 +113,10 @@ def render_certificate(
     box: Box,
     font_key: str = DEFAULT_FONT,
     color: str = "#1a1a1a",
-    erase: list[Box] | None = None,
     max_size: int | None = None,
     align: str = "center",
 ) -> Image.Image:
-    img = erase_regions(template, erase or [])
+    img = template.copy()  # never draw on the shared template
     name = " ".join(name.split())
     if not name:
         return img
