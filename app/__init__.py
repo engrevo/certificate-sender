@@ -92,6 +92,17 @@ def create_app(config: dict | None = None) -> Flask:
             abort(400, f"الحد الأقصى {app.config['MAX_RECIPIENTS']} اسم في الدفعة")
         return [make_recipient(r.get("name", ""), r.get("phone_raw") or r.get("phone") or "") for r in raw]
 
+    @app.context_processor
+    def asset_helper():
+        def asset(filename):
+            """Static URL with a version tag, so browsers fetch new files after each deploy."""
+            try:
+                v = int((Path(app.static_folder) / filename).stat().st_mtime)
+            except OSError:
+                v = 0
+            return url_for("static", filename=filename, v=v)
+        return {"asset": asset}
+
     # ------------------------------------------------------------- auth
     @app.before_request
     def require_login():
