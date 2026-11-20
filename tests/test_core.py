@@ -227,3 +227,46 @@ def test_login_required(tmp_path):
     assert c.post("/api/recipients", data={"text": "a, 0551234567"}).status_code == 401
     c.post("/login", data={"password": "secret"})
     assert c.get("/").status_code == 200
+
+
+def test_upload_returns_erase_fill_and_light_view(client, samples):
+    t = upload(client, samples["placeholder_ar.png"])
+    fills = t["detection"]["erase_fill"]
+    assert len(fills) == 1 and fills[0].lower() == "#fbf8f1"  # the template's background
+    img = client.get(f"/api/template/{t['session_id']}/image")
+    assert img.mimetype == "image/jpeg" and len(img.data) < 400_000
+
+
+def test_font_route(client):
+    r = client.get("/fonts/amiri-bold.ttf")
+    assert r.status_code == 200 and r.mimetype == "font/ttf"
+    assert client.get("/fonts/../app.ttf").status_code == 404
+
+
+def test_big_templates_are_capped(samples):
+    buf = io.BytesIO(); samples["line.png"].resize((5000, 3535)).save(buf, "PNG")
+    assert max(load_template(buf.getvalue(), "big.png").size) == 2480
+
+
+def test_parallel_send_uses_all_workers(tmp_path):
+    import threading
+    from app.jobs import JobManager
+
+    seen, lock = set(), threading.Lock()
+
+    class SlowClient:
+        def send_certificate(self, to, name, pdf, filename, caption=""):
+            with lock:
+                seen.add(threading.get_ident())
+            time.sleep(0.2)
+            return "ok"
+
+    tpl = Image.new("RGB", (800, 560), "white")
+    people = [{"name": f"n{i}", "phone": "966551234567"} for i in range(8)]
+    settings = {"box": {"x": 100, "y": 200, "w": 600, "h": 80}, "erase": [], "font": "amiri", "color": "#000000"}
+    t = time.time()
+    job = JobManager().start(tpl, settings, people, SlowClient(), delay=0, workers=4)
+    while job.state == "running":
+        time.sleep(0.05)
+    assert sum(i["status"] == "sent" for i in job.items) == 8
+    assert len(seen) == 4 and time.time() - t < 1.2  # ~4x faster than one-by-one (1.6s)

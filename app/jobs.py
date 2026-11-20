@@ -12,7 +12,9 @@ from dataclasses import dataclass, field
 from PIL import Image
 
 from .detector import Box
-from .renderer import render_certificate, to_pdf_bytes
+from concurrent.futures import ThreadPoolExecutor
+
+from .renderer import erase_regions, render_certificate, to_pdf_bytes
 from .whatsapp import WhatsAppClient, WhatsAppError
 
 
@@ -52,7 +54,7 @@ class JobManager:
         return self.jobs.get(job_id)
 
     def start(self, template: Image.Image, settings: dict, recipients: list[dict],
-              client: WhatsAppClient, delay: float = 1.0, caption: str = "") -> Job:
+              client: WhatsAppClient, delay: float = 0.2, caption: str = "", workers: int = 4) -> Job:
         job = Job(id=uuid.uuid4().hex, total=len(recipients))
         for r in recipients:
             job.items.append({
@@ -62,28 +64,37 @@ class JobManager:
             })
         with self.lock:
             self.jobs[job.id] = job
-        t = threading.Thread(target=self._run, args=(job, template, settings, client, delay, caption), daemon=True)
+        t = threading.Thread(target=self._run, args=(job, template, settings, client, delay, caption, workers), daemon=True)
         t.start()
         return job
 
-    def _run(self, job: Job, template, settings, client, delay, caption):
+    def _run(self, job: Job, template, settings, client, delay, caption, workers):
         box = Box(**settings["box"])
-        erase = [Box(**b) for b in settings.get("erase", [])]
-        for item in job.items:
+        # Erase the placeholder once for the whole batch instead of per certificate.
+        base = erase_regions(template, [Box(**b) for b in settings.get("erase", [])])
+        font, color = settings.get("font"), settings.get("color", "#1a1a1a")
+
+        def process(item):
             if job.cancel.is_set():
-                break
-            if item["status"] != "pending":
-                continue
+                return
             item["status"] = "sending"
             try:
-                img = render_certificate(template, item["name"], box, settings.get("font"), settings.get("color", "#1a1a1a"), erase)
-                pdf = to_pdf_bytes(img)
+                pdf = to_pdf_bytes(render_certificate(base, item["name"], box, font, color))
                 msg_caption = caption.replace("{name}", item["name"]) if caption else ""
-                item["message_id"] = client.send_certificate(item["phone"], item["name"], pdf, safe_filename(item["name"]), msg_caption)
+                item["message_id"] = client.send_certificate(item["phone"], item["name"], pdf,
+                                                             safe_filename(item["name"]), msg_caption)
                 item["status"] = "sent"
             except WhatsAppError as exc:
                 item["status"], item["error"] = "failed", str(exc)
             except Exception as exc:  # keep going with the rest of the list
                 item["status"], item["error"] = "failed", f"خطأ غير متوقع: {exc}"
-            time.sleep(delay)
+            if delay:
+                time.sleep(delay)
+
+        pending = [i for i in job.items if i["status"] == "pending"]
+        with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+            list(pool.map(process, pending))
+        for i in job.items:  # anything not started because of a cancel
+            if i["status"] == "pending" and job.cancel.is_set():
+                i["status"], i["error"] = "skipped", "تم الإيقاف"
         job.state = "cancelled" if job.cancel.is_set() else "done"

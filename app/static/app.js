@@ -42,10 +42,32 @@
   drop.addEventListener("drop", (ev) => { ev.preventDefault(); if (ev.dataTransfer.files[0]) uploadTemplate(ev.dataTransfer.files[0]); });
   $("templateFile").addEventListener("change", (e) => e.target.files[0] && uploadTemplate(e.target.files[0]));
 
-  async function uploadTemplate(file) {
-    const fd = new FormData(); fd.append("file", file);
-    drop.querySelector("strong").textContent = "جاري تحليل الشهادة…";
+  // Big photos are shrunk in the browser before upload: much faster on slow
+  // connections and on the server, with no visible loss for a certificate.
+  const MAX_SIDE = 2480;
+  async function shrinkImage(file) {
+    if (!/^image\/(png|jpe?g|webp)$/.test(file.type)) return file; // PDFs go as-is
     try {
+      const bmp = await createImageBitmap(file);
+      const k = Math.min(1, MAX_SIDE / Math.max(bmp.width, bmp.height));
+      if (k === 1 && file.size < 2.5e6) return file;
+      const c = document.createElement("canvas");
+      c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+      const ctx = c.getContext("2d");
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, c.width, c.height);
+      ctx.drawImage(bmp, 0, 0, c.width, c.height);
+      const blob = await new Promise((r) => c.toBlob(r, "image/jpeg", 0.93));
+      return blob ? new File([blob], file.name.replace(/\.\w+$/, "") + ".jpg", { type: "image/jpeg" }) : file;
+    } catch (_) { return file; }
+  }
+
+  async function uploadTemplate(file) {
+    const label = drop.querySelector("strong");
+    label.textContent = "جاري رفع الشهادة…";
+    stage.classList.add("busy");
+    try {
+      const fd = new FormData(); fd.append("file", await shrinkImage(file));
+      label.textContent = "جاري تحليل الشهادة…";
       const data = await (await api("/api/template", { method: "POST", body: fd })).json();
       state.sid = data.session_id; state.W = data.width; state.H = data.height;
       state.detected = data.detection; state.box = { ...data.detection.box };
@@ -55,14 +77,14 @@
       const msg = $("detectMsg");
       msg.textContent = METHOD_MSG[data.detection.method] || "";
       msg.className = "detect" + (data.detection.confidence < 0.6 ? " low" : "");
-      $("tplImg").src = `/api/template/${state.sid}/image`;
+      await Promise.all([loadTemplateImage(`/api/template/${state.sid}/image`), loadFont($("font").value)]);
       $("editor").hidden = false;
-      drop.querySelector("strong").textContent = "تغيير الشهادة — اسحب ملف جديد أو اضغط";
-      placeBox(); schedulePreview(0); refreshButtons();
+      label.textContent = "تغيير الشهادة — اسحب ملف جديد أو اضغط";
+      placeBox(); draw(); refreshButtons();
     } catch (err) {
-      drop.querySelector("strong").textContent = "اسحب الشهادة هنا أو اضغط للاختيار";
+      label.textContent = "اسحب الشهادة هنا أو اضغط للاختيار";
       toast(err.message, true);
-    }
+    } finally { stage.classList.remove("busy"); }
   }
 
   // ------------------------------------------------------------ drag / resize box
@@ -92,31 +114,73 @@
     if (drag.mode.includes("n")) { h = Math.max(min, s.h - dy); y = s.y + s.h - h; }
     x = Math.min(Math.max(0, x), state.W - w); y = Math.min(Math.max(0, y), state.H - h);
     state.box = { x: Math.round(x), y: Math.round(y), w: Math.round(Math.min(w, state.W)), h: Math.round(Math.min(h, state.H)) };
-    placeBox();
+    placeBox(); requestDraw();
   });
-  const endDrag = () => { if (drag) { drag = null; schedulePreview(); } };
+  const endDrag = () => { drag = null; };
   boxEl.addEventListener("pointerup", endDrag);
   boxEl.addEventListener("pointercancel", endDrag);
-  $("resetBox").addEventListener("click", () => { state.box = { ...state.detected.box }; placeBox(); schedulePreview(0); });
+  $("resetBox").addEventListener("click", () => { state.box = { ...state.detected.box }; placeBox(); draw(); });
+  $("showBox").addEventListener("change", (e) => stage.classList.toggle("nobox", !e.target.checked));
 
-  // ------------------------------------------------------------ preview
-  let pvTimer, pvSeq = 0, pvUrl;
-  function schedulePreview(delay = 350) { clearTimeout(pvTimer); pvTimer = setTimeout(renderPreview, delay); }
-  async function renderPreview() {
-    if (!state.sid) return;
-    const seq = ++pvSeq;
-    try {
-      const res = await api("/api/preview", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...settings(), name: $("sampleName").value }),
-      });
-      const blob = await res.blob();
-      if (seq !== pvSeq) return;
-      if (pvUrl) URL.revokeObjectURL(pvUrl);
-      pvUrl = URL.createObjectURL(blob); $("previewImg").src = pvUrl;
-    } catch (err) { toast(err.message, true); }
+  // ------------------------------------------------------------ instant preview (drawn in the browser)
+  // Same fonts and the same fitting rule as the server, so what you see is what gets sent.
+  const canvas = $("tplCanvas"), ctx = canvas.getContext("2d");
+  let tplImage = null;
+  const fontReady = {};
+  function loadFont(key) {
+    if (!fontReady[key]) {
+      const face = new FontFace(`cert-${key}`, `url(${window.FONT_URLS[key]})`);
+      fontReady[key] = face.load().then((f) => { document.fonts.add(f); }).catch(() => {});
+    }
+    return fontReady[key];
   }
-  ["sampleName", "font", "color", "erase"].forEach((id) => $(id).addEventListener("input", () => schedulePreview()));
+  Object.keys(window.FONT_URLS || {}).forEach(loadFont); // warm up in the background
+
+  function loadTemplateImage(url) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => { tplImage = img; canvas.width = img.naturalWidth; canvas.height = img.naturalHeight; resolve(); };
+      img.onerror = () => reject(new Error("تعذّر تحميل صورة الشهادة"));
+      img.src = url;
+    });
+  }
+
+  let rafPending = false;
+  function requestDraw() { if (!rafPending) { rafPending = true; requestAnimationFrame(() => { rafPending = false; draw(); }); } }
+
+  function draw() {
+    if (!tplImage || !state.box) return;
+    const k = canvas.width / state.W;
+    ctx.drawImage(tplImage, 0, 0, canvas.width, canvas.height);
+    if (state.hasErase && $("erase").checked) {
+      (state.detected.erase || []).forEach((b, i) => {
+        ctx.fillStyle = (state.detected.erase_fill || [])[i] || "#ffffff";
+        ctx.fillRect(b.x * k, b.y * k, b.w * k + 1, b.h * k + 1);
+      });
+    }
+    const name = $("sampleName").value.trim().replace(/\s+/g, " ");
+    if (!name) return;
+    const key = $("font").value, family = `"cert-${key}"`;
+    const bx = state.box.x * k, by = state.box.y * k, bw = state.box.w * k, bh = state.box.h * k;
+    ctx.direction = /[؀-ۿ]/.test(name) ? "rtl" : "ltr";
+    ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+    let size = Math.max(8, Math.floor(bh * 0.9)), m;
+    while (true) {
+      ctx.font = `${size}px ${family}`;
+      m = ctx.measureText(name);
+      const w = m.actualBoundingBoxLeft + m.actualBoundingBoxRight;
+      const h = m.actualBoundingBoxAscent + m.actualBoundingBoxDescent;
+      if ((w <= bw * 0.96 && h <= bh * 0.98) || size <= 4) break;
+      size = Math.max(4, Math.floor(size * 0.94));
+    }
+    const tw = m.actualBoundingBoxLeft + m.actualBoundingBoxRight;
+    const th = m.actualBoundingBoxAscent + m.actualBoundingBoxDescent;
+    ctx.fillStyle = $("color").value;
+    ctx.fillText(name, bx + (bw - tw) / 2 + m.actualBoundingBoxLeft, by + (bh - th) / 2 + m.actualBoundingBoxAscent);
+  }
+  ["sampleName", "color", "erase"].forEach((id) => $(id).addEventListener("input", requestDraw));
+  $("font").addEventListener("change", () => loadFont($("font").value).then(draw));
+  document.fonts && document.fonts.ready.then(() => requestDraw());
 
   // ------------------------------------------------------------ step 2: list
   $("listFile").addEventListener("change", (e) => e.target.files[0] && loadList(e.target.files[0]));

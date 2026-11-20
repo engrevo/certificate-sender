@@ -54,6 +54,9 @@ class Detection:
         return d
 
 
+OCR_MAX_SIDE = 1500
+OCR_TIMEOUT = 30  # seconds
+
 # --------------------------------------------------------------------------- helpers
 
 _ARABIC_DIACRITICS = re.compile(r"[ً-ْـ]")  # harakat + tatweel
@@ -124,18 +127,24 @@ def detect_placeholder(img: Image.Image) -> Detection | None:
         return None
     rgb = np.array(img.convert("RGB"))
     H, W = rgb.shape[:2]
-    # OCR on a capped-size copy for speed.
-    scale = min(1.0, 2200 / max(W, H))
-    small = cv2.resize(rgb, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA) if scale < 1 else rgb
-    try:
-        data = pytesseract.image_to_data(
-            small, lang="ara+eng", config="--psm 11", output_type=pytesseract.Output.DICT
-        )
-    except Exception:
+    # OCR only the body of the page (skip outer frame/header/footer margins) on a
+    # small grayscale copy: this is by far the slowest step, so keep it light.
+    y0c, y1c = int(H * 0.12), int(H * 0.92)
+    x0c, x1c = int(W * 0.04), int(W * 0.96)
+    crop = cv2.cvtColor(rgb[y0c:y1c, x0c:x1c], cv2.COLOR_RGB2GRAY)
+    scale = min(1.0, OCR_MAX_SIDE / max(crop.shape))
+    small = cv2.resize(crop, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA) if scale < 1 else crop
+    data = None
+    for lang in ("ara+eng", None):
         try:
-            data = pytesseract.image_to_data(small, config="--psm 11", output_type=pytesseract.Output.DICT)
+            kw = {"lang": lang} if lang else {}
+            data = pytesseract.image_to_data(small, config="--psm 11", output_type=pytesseract.Output.DICT,
+                                             timeout=OCR_TIMEOUT, **kw)
+            break
         except Exception:
-            return None
+            continue
+    if data is None:
+        return None
 
     words = []
     for i, text in enumerate(data["text"]):
@@ -147,7 +156,7 @@ def detect_placeholder(img: Image.Image) -> Detection | None:
             conf = -1
         words.append({
             "text": text.strip(), "conf": conf,
-            "x": data["left"][i] / scale, "y": data["top"][i] / scale,
+            "x": data["left"][i] / scale + x0c, "y": data["top"][i] / scale + y0c,
             "w": data["width"][i] / scale, "h": data["height"][i] / scale,
         })
 

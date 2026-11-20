@@ -33,14 +33,14 @@
       <div class="editor-grid">
         <div>
           <div class="stage" id="stage">
-            <img id="tplImg" alt="القالب" draggable="false">
+            <canvas id="tplCanvas" aria-label="القالب مع الاسم"></canvas>
             <div class="box" id="box">
               <span class="box-label">الاسم هنا</span>
               <i class="h nw" data-h="nw"></i><i class="h ne" data-h="ne"></i>
               <i class="h sw" data-h="sw"></i><i class="h se" data-h="se"></i>
             </div>
           </div>
-          <p class="hint">اسحب المربع لتحريكه، ومن الزوايا لتغيير حجمه. الاسم يتوسّط المربع ويصغر تلقائيًا لو كان طويل.</p>
+          <p class="hint">اسحب المربع لتحريكه، ومن الزوايا لتغيير حجمه. المعاينة تتحدث مباشرة، والاسم يتوسّط المربع ويصغر تلقائيًا لو كان طويل.</p>
         </div>
         <aside class="controls">
           <label>اسم للمعاينة
@@ -59,11 +59,10 @@
           <label class="check" id="eraseWrap" hidden>
             <input type="checkbox" id="erase" checked> امسح كلمة {الاسم} من القالب
           </label>
+          <label class="check">
+            <input type="checkbox" id="showBox" checked> أظهر مربع التحديد
+          </label>
           <button class="secondary" id="resetBox">رجّع المكان المكتشف</button>
-          <div class="preview">
-            <div class="preview-title">المعاينة</div>
-            <img id="previewImg" alt="معاينة">
-          </div>
         </aside>
       </div>
     </div>
@@ -110,6 +109,7 @@
   </section>
 </main>
 <div id="toast" class="toast" hidden></div>
+<script>window.FONT_URLS = {{ font_urls|tojson }};</script>
 <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>

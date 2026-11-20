@@ -17,7 +17,8 @@ from PIL import Image
 from .detector import Box, detect_name_box
 from .jobs import JobManager, safe_filename
 from .recipients import parse_file, parse_text
-from .renderer import DEFAULT_FONT, FONTS, load_template, render_certificate, to_pdf_bytes, to_png_bytes
+from .renderer import (DEFAULT_FONT, FONTS, FONTS_DIR, erase_fill_colors, erase_regions, load_template,
+                       render_certificate, to_pdf_bytes, to_png_bytes, view_jpeg)
 from .whatsapp import WhatsAppClient, WhatsAppConfig
 
 TEMPLATE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".pdf"}
@@ -39,7 +40,9 @@ def create_app(config: dict | None = None) -> Flask:
         MAX_CONTENT_LENGTH=25 * 1024 * 1024,
         DATA_DIR=os.environ.get("DATA_DIR", "data"),
         APP_PASSWORD=os.environ.get("APP_PASSWORD", ""),
-        SEND_DELAY=float(os.environ.get("SEND_DELAY_SECONDS", "1")),
+        SEND_DELAY=float(os.environ.get("SEND_DELAY_SECONDS", "0.2")),
+        SEND_WORKERS=int(os.environ.get("SEND_CONCURRENCY", "4")),
+        SEND_FILE_MAX_AGE_DEFAULT=86400,
         MAX_RECIPIENTS=int(os.environ.get("MAX_RECIPIENTS", "1000")),
     )
     if config:
@@ -77,9 +80,9 @@ def create_app(config: dict | None = None) -> Flask:
         color = payload.get("color") if _COLOR.match(str(payload.get("color", ""))) else "#1a1a1a"
         return {"box": box.__dict__, "erase": [e.__dict__ for e in erase], "font": font, "color": color}
 
-    def render(template, settings, name):
-        return render_certificate(template, name, Box(**settings["box"]), settings["font"], settings["color"],
-                                  [Box(**e) for e in settings["erase"]])
+    def render(template, settings, name, erased=False):
+        erase = [] if erased else [Box(**e) for e in settings["erase"]]
+        return render_certificate(template, name, Box(**settings["box"]), settings["font"], settings["color"], erase)
 
     def clean_recipients(raw) -> list[dict]:
         from .recipients import make_recipient
@@ -123,7 +126,8 @@ def create_app(config: dict | None = None) -> Flask:
     @app.get("/")
     def index():
         cfg = wa_config()
-        return render_template("index.html", fonts=FONTS, default_font=DEFAULT_FONT,
+        font_urls = {k: url_for("font_file", key=k) for k in FONTS}
+        return render_template("index.html", fonts=FONTS, default_font=DEFAULT_FONT, font_urls=font_urls,
                                wa_problems=cfg.problems(), dry_run=cfg.dry_run, wa_mode=cfg.mode)
 
     # ------------------------------------------------------------- API
@@ -142,14 +146,26 @@ def create_app(config: dict | None = None) -> Flask:
         sid = uuid.uuid4().hex
         d = Path(app.config["DATA_DIR"]) / "sessions" / sid
         d.mkdir(parents=True)
-        img.save(d / "template.png")
-        meta = {"width": img.width, "height": img.height, "detection": det.to_dict()}
+        img.save(d / "template.png", compress_level=1)
+        (d / "view.jpg").write_bytes(view_jpeg(img))
+        detection = det.to_dict()
+        detection["erase_fill"] = erase_fill_colors(img, det.erase)
+        meta = {"width": img.width, "height": img.height, "detection": detection}
         (d / "meta.json").write_text(json.dumps(meta, ensure_ascii=False))
         return jsonify(session_id=sid, **meta)
 
     @app.get("/api/template/<sid>/image")
     def template_image(sid):
-        return send_file(session_dir(sid) / "template.png", mimetype="image/png")
+        d = session_dir(sid)
+        if (d / "view.jpg").exists():
+            return send_file(d / "view.jpg", mimetype="image/jpeg", max_age=3600)
+        return send_file(d / "template.png", mimetype="image/png")
+
+    @app.get("/fonts/<key>.ttf")
+    def font_file(key):
+        if key not in FONTS:
+            abort(404, "الخط غير موجود")
+        return send_file(FONTS_DIR / FONTS[key][1], mimetype="font/ttf", max_age=30 * 86400)
 
     @app.post("/api/preview")
     def preview():
@@ -182,6 +198,7 @@ def create_app(config: dict | None = None) -> Flask:
         template, meta = load_session(p.get("session_id", ""))
         settings = parse_settings(p, meta)
         people = [r for r in clean_recipients(p.get("recipients")) if r["name"]]
+        base = erase_regions(template, [Box(**e) for e in settings["erase"]])
         buf = io.BytesIO()
         used = set()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
@@ -191,7 +208,7 @@ def create_app(config: dict | None = None) -> Flask:
                 while fn in used:
                     fn = safe_filename(f"{r['name']}_{n}"); n += 1
                 used.add(fn)
-                z.writestr(fn, to_pdf_bytes(render(template, settings, r["name"])))
+                z.writestr(fn, to_pdf_bytes(render(base, settings, r["name"], erased=True)))
         buf.seek(0)
         return send_file(buf, mimetype="application/zip", as_attachment=True, download_name="certificates.zip")
 
@@ -206,7 +223,8 @@ def create_app(config: dict | None = None) -> Flask:
         people = clean_recipients(p.get("recipients"))
         client = app.config.get("WHATSAPP_CLIENT") or WhatsAppClient(cfg)
         caption = str(p.get("caption", ""))[:900]
-        job = jobs.start(template, settings, people, client, app.config["SEND_DELAY"], caption)
+        job = jobs.start(template, settings, people, client, app.config["SEND_DELAY"], caption,
+                         app.config["SEND_WORKERS"])
         return jsonify(job_id=job.id)
 
     @app.get("/api/jobs/<job_id>")

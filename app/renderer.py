@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -18,7 +19,8 @@ FONTS = {
 }
 DEFAULT_FONT = "amiri-bold"
 PDF_DPI = 200
-MAX_TEMPLATE_SIDE = 3508  # A4 at 300 dpi
+MAX_TEMPLATE_SIDE = 2480  # A4 long side at ~210 dpi: sharp in print, much faster
+VIEW_MAX_SIDE = 1600     # lightweight copy shown in the browser
 
 _HAS_RAQM = features.check("raqm")
 
@@ -46,6 +48,7 @@ def load_template(data: bytes, filename: str) -> Image.Image:
     return img
 
 
+@lru_cache(maxsize=256)
 def _font(key: str, size: int) -> ImageFont.FreeTypeFont:
     _, file = FONTS.get(key, FONTS[DEFAULT_FONT])
     engine = ImageFont.Layout.RAQM if _HAS_RAQM else ImageFont.Layout.BASIC
@@ -77,6 +80,19 @@ def _background_color(arr: np.ndarray, box: Box) -> tuple[int, int, int]:
     if ring.size == 0:
         return (255, 255, 255)
     return tuple(int(v) for v in np.median(ring, axis=0))
+
+
+def erase_fill_colors(img: Image.Image, boxes: list[Box]) -> list[str]:
+    arr = np.array(img)
+    return ["#%02x%02x%02x" % _background_color(arr, b) for b in boxes]
+
+
+def view_jpeg(img: Image.Image) -> bytes:
+    small = img.copy()
+    small.thumbnail((VIEW_MAX_SIDE, VIEW_MAX_SIDE), Image.LANCZOS)
+    buf = io.BytesIO()
+    small.save(buf, format="JPEG", quality=85)
+    return buf.getvalue()
 
 
 def erase_regions(img: Image.Image, boxes: list[Box]) -> Image.Image:
@@ -144,5 +160,5 @@ def to_png_bytes(img: Image.Image, max_side: int | None = None) -> bytes:
         img = img.copy()
         img.thumbnail((max_side, max_side), Image.LANCZOS)
     buf = io.BytesIO()
-    img.save(buf, format="PNG", optimize=True)
+    img.save(buf, format="PNG", compress_level=1)
     return buf.getvalue()
