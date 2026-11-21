@@ -147,11 +147,9 @@ def create_app(config: dict | None = None) -> Flask:
     def index():
         cfg = wa_config()
         font_urls = {k: url_for("font_file", key=k) for k in FONTS}
-        st = store()
         return render_template("index.html", fonts=FONTS, default_font=DEFAULT_FONT, font_urls=font_urls,
                                wa_problems=cfg.problems(), dry_run=cfg.dry_run, wa_mode=cfg.mode,
-                               api_ready=api_ready(cfg), storage_durable=st.durable,
-                               ephemeral_host=bool(os.environ.get("RENDER")))
+                               api_ready=api_ready(cfg))
 
     # ------------------------------------------------------------- API
     @app.post("/api/template")

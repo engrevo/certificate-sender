@@ -88,9 +88,6 @@
   <!-- Step 3 -->
   <section class="card" id="step3">
     <h2><span class="num">٣</span> الإرسال</h2>
-    {% if not storage_durable and ephemeral_host %}
-    <div class="banner warn inline">روابط الشهادات حاليًا محفوظة على السيرفر المجاني، وتنحذف إذا نام. عشان تبقى الروابط دائمة اربط Google Drive (الخطوات في README).</div>
-    {% endif %}
     <label><span>رسالة الواتساب (<code>{name}</code> = الاسم، <code>{link}</code> = رابط الشهادة)</span>
       <textarea id="waMessage" rows="3">السلام عليكم {name} 👋
 شكرًا لحضورك! هذي شهادة الحضور حقتك:
