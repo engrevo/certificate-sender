@@ -47,6 +47,8 @@ def create_app(config: dict | None = None) -> Flask:
     )
     if config:
         app.config.update(config)
+    # send_file() resolves relative paths against the package folder, not the working dir.
+    app.config["DATA_DIR"] = str(Path(app.config["DATA_DIR"]).resolve())
     jobs = JobManager()
     app.extensions["jobs"] = jobs
 
@@ -111,7 +113,8 @@ def create_app(config: dict | None = None) -> Flask:
     # ------------------------------------------------------------- auth
     @app.before_request
     def require_login():
-        if not app.config["APP_PASSWORD"] or request.endpoint in ("login", "static", "certificate_link"):
+        if not app.config["APP_PASSWORD"] or request.endpoint in ("login", "static", "certificate_link",
+                                                                 "certificate_file", "certificate_preview"):
             return None
         if session.get("ok"):
             return None
@@ -252,14 +255,34 @@ def create_app(config: dict | None = None) -> Flask:
         job = jobs.start(template, settings, people, LinkClient(store()), 0, "", app.config["SEND_WORKERS"])
         return jsonify(job_id=job.id)
 
+    def cert_info(token: str) -> dict | None:
+        st = store()
+        return st.info(token) if isinstance(st, LocalStore) else None
+
     @app.get("/c/<token>")
     def certificate_link(token):
-        st = store()
-        found = st.lookup(token) if isinstance(st, LocalStore) else None
-        if not found:
+        """The page an attendee lands on from the WhatsApp link: preview + download."""
+        info = cert_info(token)
+        if not info:
             return render_template("expired.html"), 404
-        path, filename = found
-        return send_file(path, mimetype="application/pdf", download_name=filename, max_age=86400)
+        name = info["name"] or Path(info["filename"]).stem.removeprefix("شهادة_").replace("_", " ")
+        return render_template("certificate.html", token=token, name=name, issued=info["issued"],
+                               has_preview=bool(info["preview"]))
+
+    @app.get("/c/<token>/file")
+    def certificate_file(token):
+        info = cert_info(token)
+        if not info:
+            return render_template("expired.html"), 404
+        return send_file(info["pdf"], mimetype="application/pdf", download_name=info["filename"],
+                         as_attachment=request.args.get("dl") == "1", max_age=86400)
+
+    @app.get("/c/<token>/preview.jpg")
+    def certificate_preview(token):
+        info = cert_info(token)
+        if not info or not info["preview"]:
+            abort(404, "المعاينة غير متاحة")
+        return send_file(info["preview"], mimetype="image/jpeg", max_age=86400)
 
     @app.get("/api/jobs/<job_id>")
     def job_status(job_id):

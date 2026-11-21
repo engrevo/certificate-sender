@@ -13,6 +13,7 @@ import json
 import os
 import re
 import secrets
+from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
@@ -33,23 +34,34 @@ class LocalStore:
         self.base_url = base_url.rstrip("/")
         self.root.mkdir(parents=True, exist_ok=True)
 
-    def save(self, pdf: bytes, filename: str) -> str:
+    def save(self, pdf: bytes, filename: str, name: str = "", preview: bytes | None = None) -> str:
         token = secrets.token_urlsafe(18)
         (self.root / f"{token}.pdf").write_bytes(pdf)
-        (self.root / f"{token}.json").write_text(json.dumps({"filename": filename}, ensure_ascii=False))
+        if preview:
+            (self.root / f"{token}.jpg").write_bytes(preview)
+        meta = {"filename": filename, "name": name, "issued": datetime.now(timezone.utc).date().isoformat()}
+        (self.root / f"{token}.json").write_text(json.dumps(meta, ensure_ascii=False), encoding="utf-8")
         return f"{self.base_url}/c/{token}"
 
     def lookup(self, token: str) -> tuple[Path, str] | None:
+        info = self.info(token)
+        return (info["pdf"], info["filename"]) if info else None
+
+    def info(self, token: str) -> dict | None:
+        """Everything the attendee's download page needs, or None for an unknown token."""
         if not _TOKEN.match(token or ""):
             return None
         pdf = self.root / f"{token}.pdf"
         if not pdf.exists():
             return None
         try:
-            filename = json.loads((self.root / f"{token}.json").read_text())["filename"]
-        except (OSError, ValueError, KeyError):
-            filename = "certificate.pdf"
-        return pdf, filename
+            meta = json.loads((self.root / f"{token}.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            meta = {}
+        preview = self.root / f"{token}.jpg"
+        return {"pdf": pdf, "filename": meta.get("filename") or "certificate.pdf",
+                "name": meta.get("name", ""), "issued": meta.get("issued", ""),
+                "preview": preview if preview.exists() else None}
 
 
 class DriveStore:
@@ -61,7 +73,7 @@ class DriveStore:
         self.secret = secret
         self.http = session or requests.Session()
 
-    def save(self, pdf: bytes, filename: str) -> str:
+    def save(self, pdf: bytes, filename: str, name: str = "", preview: bytes | None = None) -> str:
         payload = {"secret": self.secret, "filename": filename, "data": base64.b64encode(pdf).decode()}
         last = None
         for _ in range(3):
@@ -93,9 +105,9 @@ class LinkClient:
     def __init__(self, store):
         self.store = store
 
-    def send_certificate(self, to, name, pdf, filename, caption=""):
+    def send_certificate(self, to, name, pdf, filename, caption="", preview=None):
         try:
-            return self.store.save(pdf, filename)
+            return self.store.save(pdf, filename, name=name, preview=preview)
         except StorageError:
             raise
         except Exception as exc:

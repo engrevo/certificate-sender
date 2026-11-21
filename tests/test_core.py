@@ -251,8 +251,12 @@ def test_links_mode_end_to_end(client, samples):
     assert ok["status"] == "sent" and ok["url"].startswith("http://localhost/c/")
     assert bad["status"] == "skipped" and "url" not in bad
     token_path = ok["url"].replace("http://localhost", "")
-    pdf = client.get(token_path)
+    page = client.get(token_path)
+    assert page.status_code == 200 and "عبدالله" in page.get_data(as_text=True)
+    assert client.get(token_path + "/preview.jpg").mimetype == "image/jpeg"
+    pdf = client.get(token_path + "/file?dl=1")
     assert pdf.status_code == 200 and pdf.data.startswith(b"%PDF") and pdf.mimetype == "application/pdf"
+    assert "attachment" in pdf.headers["Content-Disposition"]
 
 
 def test_certificate_links_are_public_but_tokens_are_checked(tmp_path):
@@ -261,7 +265,9 @@ def test_certificate_links_are_public_but_tokens_are_checked(tmp_path):
     from app.storage import LocalStore
     url = LocalStore(tmp_path / "certs", "http://x").save(b"%PDF-1.4 test", "شهادة_سارة.pdf")
     r = c.get(url.replace("http://x", ""))  # no login needed for attendees
-    assert r.status_code == 200 and "attachment" not in r.headers.get("Content-Disposition", "")
+    assert r.status_code == 200 and "سارة" in r.get_data(as_text=True)
+    f = c.get(url.replace("http://x", "") + "/file")
+    assert f.status_code == 200 and "attachment" not in f.headers.get("Content-Disposition", "")
     assert c.get("/c/..%2F..%2Fetc%2Fpasswd").status_code != 200  # never reaches a file
     assert c.get("/c/AAAAAAAAAAAAAAAAAAAAAAAA").status_code == 404
 

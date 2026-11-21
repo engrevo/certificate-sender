@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>شهادة {{ name }} — مِرسال</title>
+  <meta property="og:title" content="شهادة حضور {{ name }}">
+  <meta property="og:description" content="شهادتك جاهزة للتحميل عبر مِرسال.">
+  {% if has_preview %}<meta property="og:image" content="{{ url_for('certificate_preview', token=token, _external=True) }}">{% endif %}
+  <link rel="stylesheet" href="{{ asset('style.css') }}">
+</head>
+<body class="cert-page">
+  <main class="cert-wrap">
+    <header class="cert-head">
+      <span class="cert-brand">مِرسال</span>
+      <h1>شهادتك جاهزة</h1>
+      <p>مبروك{% if name %} يا <strong>{{ name }}</strong>{% endif %}، هذي شهادة حضورك. تقدر تحمّلها وتحتفظ فيها أو تشاركها.</p>
+    </header>
+
+    <figure class="cert-preview">
+      {% if has_preview %}
+        <img src="{{ url_for('certificate_preview', token=token) }}" alt="شهادة {{ name }}">
+      {% else %}
+        <object data="{{ url_for('certificate_file', token=token) }}" type="application/pdf" aria-label="شهادة {{ name }}">
+          <p>المعاينة غير متاحة على جهازك، حمّل الشهادة من الزر تحت.</p>
+        </object>
+      {% endif %}
+    </figure>
+
+    <div class="cert-actions">
+      <a class="btn-primary" href="{{ url_for('certificate_file', token=token, dl=1) }}" download>تحميل الشهادة (PDF)</a>
+      <a class="btn-ghost" href="{{ url_for('certificate_file', token=token) }}" target="_blank" rel="noopener">فتح في المتصفح</a>
+    </div>
+
+    <dl class="cert-meta">
+      {% if name %}<div><dt>الاسم</dt><dd>{{ name }}</dd></div>{% endif %}
+      {% if issued %}<div><dt>تاريخ الإصدار</dt><dd>{{ issued }}</dd></div>{% endif %}
+    </dl>
+
+    <footer class="cert-foot">صادرة عبر <strong>مِرسال</strong> · منصّة إصدار وإرسال شهادات الحضور</footer>
+  </main>
+</body>
+</html>

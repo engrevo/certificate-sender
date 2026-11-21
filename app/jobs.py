@@ -13,7 +13,7 @@ from PIL import Image
 
 from concurrent.futures import ThreadPoolExecutor
 
-from .renderer import Box, render_certificate, to_pdf_bytes
+from .renderer import Box, render_certificate, to_pdf_bytes, view_jpeg
 from .storage import StorageError
 from .whatsapp import WhatsAppClient, WhatsAppError
 
@@ -79,10 +79,12 @@ class JobManager:
                 return
             item["status"] = "sending"
             try:
-                pdf = to_pdf_bytes(render_certificate(base, item["name"], box, font, color))
+                img = render_certificate(base, item["name"], box, font, color)
+                pdf = to_pdf_bytes(img)
                 msg_caption = caption.replace("{name}", item["name"]) if caption else ""
+                extra = {"preview": view_jpeg(img)} if getattr(client, "returns_url", False) else {}
                 result = client.send_certificate(item["phone"], item["name"], pdf,
-                                                 safe_filename(item["name"]), msg_caption)
+                                                 safe_filename(item["name"]), msg_caption, **extra)
                 item["url" if getattr(client, "returns_url", False) else "message_id"] = result
                 item["status"] = "sent"
             except (WhatsAppError, StorageError) as exc:

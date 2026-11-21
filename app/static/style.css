@@ -10,8 +10,11 @@ body {
   font-family: "Tajawal", "Segoe UI", Tahoma, system-ui, sans-serif; line-height: 1.6;
 }
 .top { padding: 28px 24px 8px; max-width: 1180px; margin: 0 auto; }
-.top h1 { margin: 0; font-size: 1.7rem; }
-.top p { margin: 4px 0 0; color: var(--muted); }
+.top .brand { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 14px; }
+.top h1 { margin: 0; font-size: 2rem; color: var(--brand); letter-spacing: 0; }
+.top .tag { font-size: .95rem; font-weight: 700; color: var(--ink); padding: 2px 12px;
+  border-radius: 999px; background: #e7f2ef; }
+.top .lead { margin: 8px 0 0; max-width: 720px; color: var(--muted); font-size: 1.02rem; }
 main { max-width: 1180px; margin: 0 auto; padding: 12px 24px 60px; display: grid; gap: 18px; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 22px; }
 .card h2 { margin: 0 0 14px; font-size: 1.2rem; display: flex; align-items: center; gap: 10px; }
@@ -85,3 +88,27 @@ body.login { display: grid; place-items: center; min-height: 100vh; }
 .wa-btn, a.wa { background: #1f9d55; color: #fff; }
 a.wa { display: inline-block; padding: 4px 12px; border-radius: 8px; text-decoration: none; font-weight: 700; }
 a.wa.opened { background: #e7f6ec; color: var(--ok); }
+
+/* ---------- attendee download page (/c/<token>) ---------- */
+body.cert-page { min-height: 100vh; background: linear-gradient(180deg, #e7f2ef 0, var(--bg) 320px); }
+.cert-wrap { max-width: 760px; margin: 0 auto; padding: 32px 16px 48px; display: grid; gap: 20px; }
+.cert-head { text-align: center; display: grid; gap: 6px; justify-items: center; }
+.cert-brand { font-weight: 800; color: var(--brand); font-size: 1.1rem; padding: 2px 14px;
+  border-radius: 999px; background: #fff; border: 1px solid #cfe5df; }
+.cert-head h1 { margin: 6px 0 0; font-size: 1.8rem; }
+.cert-head p { margin: 0; color: var(--muted); max-width: 520px; }
+.cert-preview { margin: 0; background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+  padding: 12px; box-shadow: 0 10px 30px rgba(29, 36, 51, .08); }
+.cert-preview img { display: block; width: 100%; height: auto; border-radius: 8px; }
+.cert-preview object { display: block; width: 100%; aspect-ratio: 1.414; border: 0; border-radius: 8px; }
+.cert-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+.cert-actions a { text-decoration: none; font-weight: 700; padding: 12px 22px; border-radius: 12px; text-align: center; }
+.btn-primary { background: var(--brand); color: var(--brand-ink); min-width: 220px; }
+.btn-primary:hover { filter: brightness(1.08); }
+.btn-ghost { background: var(--card); color: var(--brand); border: 1px solid #cfe5df; }
+.cert-meta { margin: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 32px; color: var(--muted); }
+.cert-meta div { display: flex; gap: 6px; }
+.cert-meta dt { font-weight: 700; } .cert-meta dt::after { content: ":"; }
+.cert-meta dd { margin: 0; color: var(--ink); }
+.cert-foot { text-align: center; color: var(--muted); font-size: .9rem; border-top: 1px solid var(--line); padding-top: 16px; }
+@media (max-width: 480px) { .cert-actions a { flex: 1 1 100%; } .cert-head h1 { font-size: 1.5rem; } }
