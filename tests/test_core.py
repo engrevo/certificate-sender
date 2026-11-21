@@ -295,3 +295,40 @@ def test_api_button_only_when_whatsapp_api_configured(tmp_path):
     assert 'id="linkBtn"' in html and 'id="sendBtn"' not in html
     api = create_app({"TESTING": True, "DATA_DIR": str(tmp_path), "WHATSAPP_CONFIG": cfg()})
     assert 'id="sendBtn"' in api.test_client().get("/").get_data(as_text=True)
+
+
+def test_drive_links_open_the_mirsal_page_and_fetch_from_drive(tmp_path, monkeypatch):
+    import json as _json
+    from app.storage import DriveFiles, DriveStore
+
+    monkeypatch.setenv("DRIVE_SCRIPT_SECRET", "pw")
+    pdf = to_pdf_bytes(Image.new("RGB", (600, 420), "white"), "سارة أحمد")
+
+    class Upload:
+        def post(self, url, data, timeout, headers):
+            return FakeResp(200, {"url": "https://drive.google.com/file/d/FILEid_1234567890/view", "id": "FILEid_1234567890"})
+
+    link = DriveStore("https://script/exec", "pw", Upload(), base_url="http://x").save(pdf, "a.pdf", name="سارة أحمد")
+    assert link.startswith("http://x/d/FILEid_1234567890/")
+    path = link.replace("http://x", "")
+
+    class Drive:  # public Drive download endpoint
+        calls = 0
+        def get(self, url, timeout):
+            Drive.calls += 1
+            assert "FILEid_1234567890" in url
+            r = FakeResp(200, None); r.content = pdf
+            return r
+
+    app = create_app({"TESTING": True, "DATA_DIR": str(tmp_path), "APP_PASSWORD": "secret",
+                      "DRIVE_FILES": DriveFiles(tmp_path / "cache", Drive())})
+    c = app.test_client()  # attendees never log in
+    page = c.get(path)
+    html = page.get_data(as_text=True)
+    assert page.status_code == 200 and "سارة أحمد" in html and time.strftime("%Y-", time.gmtime()) in html
+    assert c.get(path + "/preview.jpg").mimetype == "image/jpeg"
+    f = c.get(path + "/file?dl=1")
+    assert f.data.startswith(b"%PDF") and "attachment" in f.headers["Content-Disposition"]
+    assert Drive.calls == 1  # served from cache after the first fetch
+    assert c.get("/d/FILEid_1234567890/forged-signature").status_code == 404
+    assert c.get("/d/OTHERfile_123456789/" + path.rsplit("/", 1)[1]).status_code == 404

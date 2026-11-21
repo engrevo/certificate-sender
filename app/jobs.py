@@ -80,7 +80,7 @@ class JobManager:
             item["status"] = "sending"
             try:
                 img = render_certificate(base, item["name"], box, font, color)
-                pdf = to_pdf_bytes(img)
+                pdf = to_pdf_bytes(img, item["name"])
                 msg_caption = caption.replace("{name}", item["name"]) if caption else ""
                 extra = {"preview": view_jpeg(img)} if getattr(client, "returns_url", False) else {}
                 result = client.send_certificate(item["phone"], item["name"], pdf,

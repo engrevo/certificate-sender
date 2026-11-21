@@ -7,7 +7,7 @@
   <title>شهادة {{ name }} — مِرسال</title>
   <meta property="og:title" content="شهادة حضور {{ name }}">
   <meta property="og:description" content="شهادتك جاهزة للتحميل عبر مِرسال.">
-  {% if has_preview %}<meta property="og:image" content="{{ url_for('certificate_preview', token=token, _external=True) }}">{% endif %}
+  {% if preview_url %}<meta property="og:image" content="{{ preview_url }}">{% endif %}
   <link rel="stylesheet" href="{{ asset('style.css') }}">
 </head>
 <body class="cert-page">
@@ -19,18 +19,18 @@
     </header>
 
     <figure class="cert-preview">
-      {% if has_preview %}
-        <img src="{{ url_for('certificate_preview', token=token) }}" alt="شهادة {{ name }}">
+      {% if preview_url %}
+        <img src="{{ preview_url }}" alt="شهادة {{ name }}">
       {% else %}
-        <object data="{{ url_for('certificate_file', token=token) }}" type="application/pdf" aria-label="شهادة {{ name }}">
+        <object data="{{ file_url }}" type="application/pdf" aria-label="شهادة {{ name }}">
           <p>المعاينة غير متاحة على جهازك، حمّل الشهادة من الزر تحت.</p>
         </object>
       {% endif %}
     </figure>
 
     <div class="cert-actions">
-      <a class="btn-primary" href="{{ url_for('certificate_file', token=token, dl=1) }}" download>تحميل الشهادة (PDF)</a>
-      <a class="btn-ghost" href="{{ url_for('certificate_file', token=token) }}" target="_blank" rel="noopener">فتح في المتصفح</a>
+      <a class="btn-primary" href="{{ file_url }}?dl=1" download>تحميل الشهادة (PDF)</a>
+      <a class="btn-ghost" href="{{ file_url }}" target="_blank" rel="noopener">فتح في المتصفح</a>
     </div>
 
     <dl class="cert-meta">

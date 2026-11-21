@@ -18,7 +18,7 @@ from .jobs import JobManager, safe_filename
 from .recipients import parse_file, parse_text
 from .renderer import (DEFAULT_FONT, FONTS, FONTS_DIR, Box, default_box, load_template, render_certificate,
                        to_pdf_bytes, to_png_bytes, view_jpeg)
-from .storage import LinkClient, LocalStore, make_store
+from .storage import DriveFiles, LinkClient, LocalStore, check_drive_link, make_store
 from .whatsapp import WhatsAppClient, WhatsAppConfig
 
 TEMPLATE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".pdf"}
@@ -114,7 +114,8 @@ def create_app(config: dict | None = None) -> Flask:
     @app.before_request
     def require_login():
         if not app.config["APP_PASSWORD"] or request.endpoint in ("login", "static", "certificate_link",
-                                                                 "certificate_file", "certificate_preview"):
+                                                                 "certificate_file", "certificate_preview",
+                                                                 "drive_page", "drive_file", "drive_preview"):
             return None
         if session.get("ok"):
             return None
@@ -226,7 +227,7 @@ def create_app(config: dict | None = None) -> Flask:
                 while fn in used:
                     fn = safe_filename(f"{r['name']}_{n}"); n += 1
                 used.add(fn)
-                z.writestr(fn, to_pdf_bytes(render(template, settings, r["name"])))
+                z.writestr(fn, to_pdf_bytes(render(template, settings, r["name"]), r["name"]))
         buf.seek(0)
         return send_file(buf, mimetype="application/zip", as_attachment=True, download_name="certificates.zip")
 
@@ -265,9 +266,13 @@ def create_app(config: dict | None = None) -> Flask:
         info = cert_info(token)
         if not info:
             return render_template("expired.html"), 404
+        return cert_page(info, url_for("certificate_file", token=token),
+                         url_for("certificate_preview", token=token, _external=True))
+
+    def cert_page(info: dict, file_url: str, preview_url: str):
         name = info["name"] or Path(info["filename"]).stem.removeprefix("شهادة_").replace("_", " ")
-        return render_template("certificate.html", token=token, name=name, issued=info["issued"],
-                               has_preview=bool(info["preview"]))
+        return render_template("certificate.html", name=name, issued=info["issued"], file_url=file_url,
+                               preview_url=preview_url if info["preview"] else None)
 
     @app.get("/c/<token>/file")
     def certificate_file(token):
@@ -280,6 +285,36 @@ def create_app(config: dict | None = None) -> Flask:
     @app.get("/c/<token>/preview.jpg")
     def certificate_preview(token):
         info = cert_info(token)
+        if not info or not info["preview"]:
+            abort(404, "المعاينة غير متاحة")
+        return send_file(info["preview"], mimetype="image/jpeg", max_age=86400)
+
+    # Certificates kept in Google Drive: same attendee page, file fetched back from Drive.
+    def drive_info(file_id: str, sig: str) -> dict | None:
+        if not check_drive_link(file_id, sig, os.environ.get("DRIVE_SCRIPT_SECRET", "")):
+            return None
+        files = app.config.get("DRIVE_FILES") or DriveFiles(Path(app.config["DATA_DIR"]) / "drive-cache")
+        return files.info(file_id)
+
+    @app.get("/d/<file_id>/<sig>")
+    def drive_page(file_id, sig):
+        info = drive_info(file_id, sig)
+        if not info:
+            return render_template("expired.html"), 404
+        return cert_page(info, url_for("drive_file", file_id=file_id, sig=sig),
+                         url_for("drive_preview", file_id=file_id, sig=sig, _external=True))
+
+    @app.get("/d/<file_id>/<sig>/file")
+    def drive_file(file_id, sig):
+        info = drive_info(file_id, sig)
+        if not info:
+            return render_template("expired.html"), 404
+        return send_file(info["pdf"], mimetype="application/pdf", download_name=info["filename"],
+                         as_attachment=request.args.get("dl") == "1", max_age=86400)
+
+    @app.get("/d/<file_id>/<sig>/preview.jpg")
+    def drive_preview(file_id, sig):
+        info = drive_info(file_id, sig)
         if not info or not info["preview"]:
             abort(404, "المعاينة غير متاحة")
         return send_file(info["preview"], mimetype="image/jpeg", max_age=86400)

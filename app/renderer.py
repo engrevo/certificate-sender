@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+import time
 from functools import lru_cache
 from pathlib import Path
 
@@ -136,9 +137,14 @@ def render_certificate(
     return img
 
 
-def to_pdf_bytes(img: Image.Image) -> bytes:
+def to_pdf_bytes(img: Image.Image, name: str = "") -> bytes:
+    """PDF of the certificate. The attendee's name and issue date go in the PDF metadata,
+    so a stored file describes itself (the download page reads them back)."""
     buf = io.BytesIO()
-    img.save(buf, format="PDF", resolution=PDF_DPI, quality=92)
+    meta = {"creator": "مِرسال", "subject": "شهادة حضور", "creationDate": time.gmtime()}
+    if name:
+        meta["title"] = name
+    img.save(buf, format="PDF", resolution=PDF_DPI, quality=92, **meta)
     return buf.getvalue()
 
 
