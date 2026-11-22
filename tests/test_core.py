@@ -332,3 +332,19 @@ def test_drive_links_open_the_mirsal_page_and_fetch_from_drive(tmp_path, monkeyp
     assert Drive.calls == 1  # served from cache after the first fetch
     assert c.get("/d/FILEid_1234567890/forged-signature").status_code == 404
     assert c.get("/d/OTHERfile_123456789/" + path.rsplit("/", 1)[1]).status_code == 404
+
+
+def test_drive_links_go_to_static_page_when_configured():
+    import json as _json
+    from app.storage import DriveStore
+
+    class S:
+        sent = None
+        def post(self, url, data, timeout, headers):
+            S.sent = _json.loads(data)
+            return FakeResp(200, {"url": "https://drive.google.com/file/d/FILEid_1234567890/view", "id": "FILEid_1234567890"})
+
+    page = "https://engrevo.github.io/certificate-sender/c/"
+    link = DriveStore("https://script/exec", "pw", S(), base_url="http://x", page_url=page).save(b"%PDF", "a.pdf", name="سارة")
+    assert link == page + "?id=FILEid_1234567890"
+    assert S.sent["name"] == "سارة"  # stored in Drive so the static page can show it

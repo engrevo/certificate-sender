@@ -10,7 +10,9 @@ body {
   font-family: "Tajawal", "Segoe UI", Tahoma, system-ui, sans-serif; line-height: 1.6;
 }
 .top { padding: 28px 24px 8px; max-width: 1180px; margin: 0 auto; }
-.top .brand { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 14px; }
+.top .brand { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; }
+.logo { display: block; border-radius: 12px; }
+.login-card .logo { justify-self: center; }
 .top h1 { margin: 0; font-size: 2rem; color: var(--brand); letter-spacing: 0; }
 .top .tag { font-size: .95rem; font-weight: 700; color: var(--ink); padding: 2px 12px;
   border-radius: 999px; background: #e7f2ef; }
@@ -80,7 +82,7 @@ td.phone { direction: ltr; text-align: right; font-variant-numeric: tabular-nums
 .toast.err { background: var(--bad); }
 body.login { display: grid; place-items: center; min-height: 100vh; }
 .login-card { width: min(380px, 92vw); display: grid; gap: 14px; }
-.login-card h1 { font-size: 1.3rem; margin: 0; }
+.login-card h1 { font-size: 1.3rem; margin: 0; text-align: center; }
 .err { color: var(--bad); margin: 0; }
 
 .banner.inline { margin: 0 0 14px; max-width: none; }
@@ -93,7 +95,8 @@ a.wa.opened { background: #e7f6ec; color: var(--ok); }
 body.cert-page { min-height: 100vh; background: linear-gradient(180deg, #e7f2ef 0, var(--bg) 320px); }
 .cert-wrap { max-width: 760px; margin: 0 auto; padding: 32px 16px 48px; display: grid; gap: 20px; }
 .cert-head { text-align: center; display: grid; gap: 6px; justify-items: center; }
-.cert-brand { font-weight: 800; color: var(--brand); font-size: 1.1rem; padding: 2px 14px;
+.cert-brand { display: inline-flex; align-items: center; gap: 8px;
+  font-weight: 800; color: var(--brand); font-size: 1.1rem; padding: 4px 14px 4px 6px;
   border-radius: 999px; background: #fff; border: 1px solid #cfe5df; }
 .cert-head h1 { margin: 6px 0 0; font-size: 1.8rem; }
 .cert-head p { margin: 0; color: var(--muted); max-width: 520px; }

@@ -86,24 +86,34 @@ class DriveStore:
     kind = "drive"
     durable = True
 
-    def __init__(self, url: str, secret: str, session: requests.Session | None = None, base_url: str = ""):
+    def __init__(self, url: str, secret: str, session: requests.Session | None = None, base_url: str = "",
+                 page_url: str = ""):
         self.url = url
         self.secret = secret
         self.base_url = base_url.rstrip("/")
+        self.page_url = page_url.strip()
         self.http = session or requests.Session()
 
     def page_link(self, body: dict) -> str:
-        """Mirsal's own page for the file, falling back to the plain Drive link."""
+        """Where the attendee lands, best first:
+        1. the static Mirsal page (CERT_PAGE_URL, e.g. GitHub Pages): never sleeps, opens instantly;
+        2. this server's /d/ page;
+        3. the plain Drive link."""
         file_id = body.get("id")
         if not file_id:
             m = _DRIVE_URL_ID.search(body.get("url", ""))
             file_id = m and (m.group(1) or m.group(2))
-        if self.base_url and self.secret and file_id and DRIVE_ID.match(file_id):
+        if not (file_id and DRIVE_ID.match(file_id)):
+            return body["url"]
+        if self.page_url:
+            return f"{self.page_url}{'&' if '?' in self.page_url else '?'}id={file_id}"
+        if self.base_url and self.secret:
             return f"{self.base_url}/d/{file_id}/{sign_drive_id(file_id, self.secret)}"
         return body["url"]
 
     def save(self, pdf: bytes, filename: str, name: str = "", preview: bytes | None = None) -> str:
-        payload = {"secret": self.secret, "filename": filename, "data": base64.b64encode(pdf).decode()}
+        payload = {"secret": self.secret, "filename": filename, "name": name,
+                   "data": base64.b64encode(pdf).decode()}
         last = None
         for _ in range(3):
             try:
@@ -122,7 +132,8 @@ class DriveStore:
 def make_store(data_dir: str, base_url: str):
     url = os.environ.get("DRIVE_SCRIPT_URL", "").strip()
     if url:
-        return DriveStore(url, os.environ.get("DRIVE_SCRIPT_SECRET", ""), base_url=base_url)
+        return DriveStore(url, os.environ.get("DRIVE_SCRIPT_SECRET", ""), base_url=base_url,
+                          page_url=os.environ.get("CERT_PAGE_URL", ""))
     return LocalStore(Path(data_dir) / "certs", base_url)
 
 

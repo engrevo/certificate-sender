@@ -8,12 +8,13 @@
   <meta property="og:title" content="شهادة حضور {{ name }}">
   <meta property="og:description" content="شهادتك جاهزة للتحميل عبر مِرسال.">
   {% if preview_url %}<meta property="og:image" content="{{ preview_url }}">{% endif %}
+  <link rel="icon" type="image/svg+xml" href="{{ asset('logo.svg') }}">
   <link rel="stylesheet" href="{{ asset('style.css') }}">
 </head>
 <body class="cert-page">
   <main class="cert-wrap">
     <header class="cert-head">
-      <span class="cert-brand">مِرسال</span>
+      <span class="cert-brand"><img src="{{ asset('logo.svg') }}" alt="" width="26" height="26">مِرسال</span>
       <h1>شهادتك جاهزة</h1>
       <p>مبروك{% if name %} يا <strong>{{ name }}</strong>{% endif %}، هذي شهادة حضورك. تقدر تحمّلها وتحتفظ فيها أو تشاركها.</p>
     </header>

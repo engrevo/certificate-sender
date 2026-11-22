@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>شهادتك — مِرسال</title>
+  <meta name="description" content="شهادة حضورك جاهزة للتحميل عبر مِرسال.">
+  <meta property="og:title" content="شهادة حضورك جاهزة">
+  <meta property="og:description" content="افتح الرابط لمعاينة شهادتك وتحميلها، صادرة عبر مِرسال.">
+  <meta property="og:site_name" content="مِرسال">
+  <link rel="icon" type="image/svg+xml" href="../logo.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #f5f6f8; --card: #fff; --ink: #1d2433; --muted: #667085; --line: #e3e6eb;
+      --brand: #1f6f5c; --brand-ink: #fff; --tint: #e7f2ef; --tint-line: #cfe5df; --bad: #b42318;
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body { margin: 0; min-height: 100vh; color: var(--ink); line-height: 1.6;
+      font-family: "Tajawal", "Segoe UI", Tahoma, system-ui, sans-serif;
+      background: linear-gradient(180deg, var(--tint) 0, var(--bg) 320px); }
+    .wrap { max-width: 760px; margin: 0 auto; padding: 32px 16px 48px; display: grid; gap: 20px; }
+    .head { text-align: center; display: grid; gap: 6px; justify-items: center; }
+    .brand { display: inline-flex; align-items: center; gap: 8px;
+      font-weight: 800; color: var(--brand); font-size: 1.1rem; padding: 4px 14px 4px 6px;
+      border-radius: 999px; background: #fff; border: 1px solid var(--tint-line); }
+    h1 { margin: 6px 0 0; font-size: 1.8rem; }
+    .head p { margin: 0; color: var(--muted); max-width: 520px; }
+    .preview { margin: 0; background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+      padding: 12px; box-shadow: 0 10px 30px rgba(29, 36, 51, .08); }
+    .preview img { display: block; width: 100%; height: auto; border-radius: 8px; }
+    .preview iframe { display: block; width: 100%; aspect-ratio: 1.414; border: 0; border-radius: 8px; }
+    .skeleton { aspect-ratio: 1.414; border-radius: 8px;
+      background: linear-gradient(90deg, #eef1f4 25%, #f6f8fa 50%, #eef1f4 75%); background-size: 200% 100%;
+      animation: shimmer 1.2s infinite linear; }
+    @keyframes shimmer { to { background-position: -200% 0; } }
+    @media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+    .actions a { text-decoration: none; font-weight: 700; padding: 12px 22px; border-radius: 12px; text-align: center; }
+    .primary { background: var(--brand); color: var(--brand-ink); min-width: 220px; }
+    .primary:hover { filter: brightness(1.08); }
+    .ghost { background: var(--card); color: var(--brand); border: 1px solid var(--tint-line); }
+    .meta { margin: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 32px; color: var(--muted); }
+    .meta div { display: flex; gap: 6px; }
+    .meta dt { font-weight: 700; } .meta dt::after { content: ":"; }
+    .meta dd { margin: 0; color: var(--ink); }
+    .verified { display: inline-flex; align-items: center; gap: 6px; color: var(--brand); font-weight: 700; font-size: .95rem; }
+    .error { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 28px 20px; text-align: center; }
+    .error h2 { margin: 0 0 6px; font-size: 1.3rem; }
+    .error p { margin: 0; color: var(--muted); }
+    .foot { text-align: center; color: var(--muted); font-size: .9rem; border-top: 1px solid var(--line); padding-top: 16px; }
+    @media (max-width: 480px) { .actions a { flex: 1 1 100%; } h1 { font-size: 1.5rem; } }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header class="head">
+      <span class="brand"><img src="../logo.svg" alt="" width="26" height="26" style="border-radius:7px">مِرسال</span>
+      <h1 id="title">جاري تجهيز شهادتك…</h1>
+      <p id="lead">لحظات وتكون شهادتك قدامك.</p>
+    </header>
+
+    <section id="loading"><div class="preview"><div class="skeleton"></div></div></section>
+
+    <section id="ready" hidden>
+      <figure class="preview" id="figure">
+        <img id="img" alt="">
+      </figure>
+      <div class="actions" style="margin-top:20px">
+        <a class="primary" id="download" href="#">تحميل الشهادة (PDF)</a>
+        <a class="ghost" id="open" href="#" target="_blank" rel="noopener">فتح في نافذة جديدة</a>
+      </div>
+      <dl class="meta" style="margin-top:18px">
+        <div><dt>الاسم</dt><dd id="name"></dd></div>
+        <div><dt>تاريخ الإصدار</dt><dd id="issued"></dd></div>
+      </dl>
+      <p style="text-align:center;margin:14px 0 0"><span class="verified">✓ شهادة موثّقة صادرة عبر مِرسال</span></p>
+    </section>
+
+    <section id="failed" class="error" hidden>
+      <h2>الشهادة غير متاحة</h2>
+      <p id="failMsg">الرابط غير صحيح أو الشهادة حُذفت. تواصل مع منظّم الفعالية عشان يرسل لك الشهادة من جديد.</p>
+    </section>
+
+    <footer class="foot">صادرة عبر <strong>مِرسال</strong> · منصّة إصدار وإرسال شهادات الحضور</footer>
+  </main>
+
+  <script src="../config.js"></script>
+  <script>
+    (function () {
+      var $ = function (id) { return document.getElementById(id); };
+      var id = new URLSearchParams(location.search).get("id") || "";
+      var script = (window.MIRSAL_SCRIPT_URL || "").trim();
+
+      function fail(msg) {
+        $("loading").hidden = true;
+        $("title").textContent = "تعذّر عرض الشهادة";
+        $("lead").textContent = "";
+        if (msg) $("failMsg").textContent = msg;
+        $("failed").hidden = false;
+      }
+
+      if (!/^[A-Za-z0-9_-]{10,128}$/.test(id)) return fail();
+      if (!script) return fail("الصفحة لسه ما تجهّزت. تواصل مع منظّم الفعالية.");
+
+      var ctrl = "AbortController" in window ? new AbortController() : null;
+      var timer = setTimeout(function () { if (ctrl) ctrl.abort(); }, 20000);
+
+      fetch(script + (script.indexOf("?") < 0 ? "?" : "&") + "id=" + encodeURIComponent(id),
+            ctrl ? { signal: ctrl.signal } : {})
+        .then(function (r) { return r.json(); })
+        .then(function (info) {
+          clearTimeout(timer);
+          if (!info || !info.ok) return fail();
+          var name = info.name || "";
+          document.title = (name ? "شهادة " + name : "شهادتك") + " — مِرسال";
+          $("title").textContent = "شهادتك جاهزة";
+          $("lead").textContent = (name ? "مبروك يا " + name + "، " : "مبروك، ") +
+            "هذي شهادة حضورك. تقدر تحمّلها وتحتفظ فيها أو تشاركها.";
+          $("name").textContent = name || "—";
+          $("issued").textContent = info.issued || "—";
+          $("download").href = "https://drive.usercontent.google.com/download?id=" + id + "&export=download";
+          $("open").href = "https://drive.google.com/file/d/" + id + "/view";
+
+          var img = $("img");
+          img.alt = "شهادة " + name;
+          img.onerror = function () {  // no thumbnail yet: fall back to Drive's own viewer
+            var frame = document.createElement("iframe");
+            frame.src = "https://drive.google.com/file/d/" + id + "/preview";
+            frame.title = img.alt;
+            frame.setAttribute("allow", "autoplay");
+            $("figure").replaceChildren(frame);
+          };
+          img.src = "https://drive.google.com/thumbnail?id=" + id + "&sz=w1600";
+          $("loading").hidden = true;
+          $("ready").hidden = false;
+        })
+        .catch(function () {
+          clearTimeout(timer);
+          fail("ما قدرنا نوصل للشهادة الحين. تأكد من الإنترنت وحاول مرة ثانية.");
+        });
+    })();
+  </script>
+</body>
+</html>
